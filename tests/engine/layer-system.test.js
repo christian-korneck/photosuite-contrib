@@ -227,6 +227,97 @@ describe("engine/layer-system.js", () => {
     });
   });
 
+  // The texture format follows the document's depth, but 8-bit must keep
+  // issuing exactly the calls it always did — it is the path every existing
+  // document takes.
+  describe("depth-aware textures", () => {
+    /** A WebGL2 stub that records every texImage2D / readPixels call. */
+    function recordingLayerSystem(grantedExtensions) {
+      const ls = stubWebGl2Canvas(grantedExtensions);
+      const calls = { texImage2D: [], readPixels: [], texParameteri: [] };
+      Object.assign(ls.renderCtx, {
+        createTexture: () => ({}),
+        bindTexture() {},
+        texParameteri(target, name, value) { calls.texParameteri.push([name, value]); },
+        texImage2D(...args) { calls.texImage2D.push(args); },
+        readPixels(...args) { calls.readPixels.push(args); },
+        bindFramebuffer() {},
+        framebufferTexture2D() {},
+        viewport() {},
+        enable() {},
+        scissor() {},
+        TEXTURE_2D: 3553,
+        TEXTURE_MIN_FILTER: 10241,
+        TEXTURE_MAG_FILTER: 10240,
+        TEXTURE_WRAP_S: 10242,
+        TEXTURE_WRAP_T: 10243,
+        CLAMP_TO_EDGE: 33071,
+        NEAREST: 9728,
+        LINEAR: 9729,
+        COLOR_ATTACHMENT0: 36064,
+        SCISSOR_TEST: 3089,
+      });
+      return { ls, calls };
+    }
+
+    it("allocates 8-bit textures with the unsized RGBA triple, as before", () => {
+      const { ls, calls } = recordingLayerSystem(["EXT_color_buffer_float"]);
+      new ls.RgbaTexture(4, 4);
+      const [, , internalFormat, , , , format, type] = calls.texImage2D[0];
+      assert.equal(internalFormat, 6408, "internalFormat is RGBA");
+      assert.equal(format, 6408);
+      assert.equal(type, 5121, "UNSIGNED_BYTE");
+    });
+
+    it("allocates 32-bit textures as RGBA32F float", () => {
+      const { ls, calls } = recordingLayerSystem(["EXT_color_buffer_float"]);
+      new ls.RgbaTexture(4, 4, false, 32);
+      const [, , internalFormat, , , , format, type] = calls.texImage2D[0];
+      assert.equal(internalFormat, 34836, "RGBA32F");
+      assert.equal(format, 6408);
+      assert.equal(type, 5126, "FLOAT");
+    });
+
+    it("reads a texture back in its own format, not always as bytes", () => {
+      const { ls, calls } = recordingLayerSystem(["EXT_color_buffer_float"]);
+      const texture = new ls.RgbaTexture(2, 2, false, 32);
+      texture.get(new Float32Array(16));
+      const [, , , , format, type] = calls.readPixels[0];
+      assert.equal(format, 6408);
+      assert.equal(type, 5126, "reads floats back, not bytes");
+    });
+
+    it("refuses linear filtering on float textures the driver cannot filter", () => {
+      const { ls, calls } = recordingLayerSystem(["EXT_color_buffer_float"]);
+      new ls.RgbaTexture(4, 4, true, 32);
+      const minFilter = calls.texParameteri.find(([name]) => name === 10241);
+      assert.equal(minFilter[1], 9728, "falls back to NEAREST without float linear filtering");
+    });
+
+    it("keeps linear filtering when the driver supports it", () => {
+      const { ls, calls } = recordingLayerSystem([
+        "EXT_color_buffer_float", "OES_texture_float_linear",
+      ]);
+      new ls.RgbaTexture(4, 4, true, 32);
+      const minFilter = calls.texParameteri.find(([name]) => name === 10241);
+      assert.equal(minFilter[1], 9729, "LINEAR");
+    });
+
+    it("counts wider textures as the memory they actually occupy", () => {
+      const { ls } = recordingLayerSystem(["EXT_color_buffer_float"]);
+      const before = ls.textureMemoryCount;
+      new ls.RgbaTexture(10, 10, false, 32);
+      assert.equal(ls.textureMemoryCount - before, 10 * 10 * 16, "four float samples per pixel");
+    });
+
+    it("clones a texture at its own depth rather than dropping to 8-bit", () => {
+      const { ls } = recordingLayerSystem(["EXT_color_buffer_float"]);
+      ls.renderCtx.copyTexImage2D = () => {};
+      const clone = new ls.RgbaTexture(4, 4, false, 32).clone();
+      assert.equal(clone.bitDepth, 32);
+    });
+  });
+
   // A shader that fails to build leaves a program that draws black. Without a
   // record of the failure nothing can tell that apart from a black document,
   // which is what the upcoming float-format variants need in order to fall back.

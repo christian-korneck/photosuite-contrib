@@ -5,6 +5,7 @@
 
 import { Rect } from '../core/math/rect.js';
 import { allocBuffer, planarToInterleaved } from "./compositing/buffer-utils.js";
+import { bytesPerPixel } from "./compositing/pixel-depth.js";
 import { copyPixels } from "./compositing/pixel-ops.js";
 import { transposeColorMatrix } from "./compositing/color-matrix.js";
 
@@ -322,13 +323,22 @@ function installTextures(LayerSystem) {
     if (LayerSystem.debugMode) console.log("GL.Channels instances: " + LayerSystem.textureInstanceCount + ", memory: " + LayerSystem.textureMemoryCount * 4)
   };
   LayerSystem.textureInstanceCount = 0;
-  LayerSystem.RgbaTexture = function(width, height, useLinearFilter) {
+  /**
+   * An RGBA texture at `bitDepth` bits per channel.
+   *
+   * 8-bit resolves to WebGL1's unsized `RGBA`/`UNSIGNED_BYTE`, so the common
+   * case behaves exactly as it did before depth was a parameter at all.
+   */
+  LayerSystem.RgbaTexture = function(width, height, useLinearFilter, bitDepth) {
     if (useLinearFilter == null) useLinearFilter = false;
+    if (bitDepth == null) bitDepth = 8;
     LayerSystem.textureInstanceCount++;
-    LayerSystem.textureMemoryCount += width * height * 4;
+    LayerSystem.textureMemoryCount += width * height * bytesPerPixel(bitDepth);
     if (LayerSystem.debugMode) console.log("GL.Channels instances: " + LayerSystem.textureInstanceCount + ", memory: " + LayerSystem.textureMemoryCount);
     let gl = LayerSystem.renderCtx;
     this.useLinearFilter = useLinearFilter;
+    this.bitDepth = bitDepth;
+    this.format = LayerSystem.textureFormatFor(bitDepth);
     this.width = width;
     this.height = height;
     this.glTexture = gl.createTexture();
@@ -337,22 +347,31 @@ function installTextures(LayerSystem) {
   };
   LayerSystem.RgbaTexture.prototype.set = function(pixelData, subRect) {
     let gl = LayerSystem.renderCtx;
+    const format = this.format;
     gl.disable(gl.SCISSOR_TEST);
     gl.bindTexture(gl.TEXTURE_2D, this.glTexture);
     if (pixelData == null || ArrayBuffer.isView(pixelData)) {
       const pixelCount = this.width * this.height;
-      if (subRect == null || subRect.area() * 10 > pixelCount) gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, this.width, this.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, pixelData);
-      else {
+      // The staging path packs a sub-rect through `copyPixels`, which works in
+      // bytes; above 8-bit the whole surface goes up instead. Uploading more
+      // than asked is only slower, whereas packing wider samples as bytes would
+      // be wrong.
+      const uploadWholeSurface = subRect == null
+        || this.bitDepth !== 8
+        || subRect.area() * 10 > pixelCount;
+      if (uploadWholeSurface) {
+        gl.texImage2D(gl.TEXTURE_2D, 0, format.internalFormat, this.width, this.height, 0, format.format, format.type, pixelData);
+      } else {
         const staging = allocBuffer(subRect.area() * 4);
         copyPixels(pixelData, new Rect(0, 0, this.width, this.height), staging, subRect);
-        gl.texSubImage2D(gl.TEXTURE_2D, 0, subRect.x, subRect.y, subRect.width, subRect.height, gl.RGBA, gl.UNSIGNED_BYTE, staging)
+        gl.texSubImage2D(gl.TEXTURE_2D, 0, subRect.x, subRect.y, subRect.width, subRect.height, format.format, format.type, staging)
       }
-    } else gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, pixelData)
+    } else gl.texImage2D(gl.TEXTURE_2D, 0, format.internalFormat, format.format, format.type, pixelData)
   };
   LayerSystem.RgbaTexture.prototype.get = function(outBuffer) {
     let gl = LayerSystem.renderCtx;
     LayerSystem.bindRenderTarget(this);
-    gl.readPixels(0, 0, this.width, this.height, gl.RGBA, gl.UNSIGNED_BYTE, outBuffer)
+    gl.readPixels(0, 0, this.width, this.height, this.format.format, this.format.type, outBuffer)
   };
   LayerSystem.RgbaTexture.prototype.saveBackup = function(backupRect) {
     if (backupRect.isEmpty()) return;
@@ -361,7 +380,7 @@ function installTextures(LayerSystem) {
       this.backupTexture = gl.createTexture();
       this.initGlTexture(this.backupTexture, this.width, this.height);
       LayerSystem.textureInstanceCount++;
-      LayerSystem.textureMemoryCount += this.width * this.height * 4
+      LayerSystem.textureMemoryCount += this.width * this.height * bytesPerPixel(this.bitDepth)
     }
     gl.bindFramebuffer(gl.FRAMEBUFFER, LayerSystem.glFramebuffer);
     gl.bindTexture(gl.TEXTURE_2D, this.backupTexture);
@@ -369,37 +388,41 @@ function installTextures(LayerSystem) {
       const copyX = Math.max(backupRect.x, 0);
       const copyY = Math.max(backupRect.y, 0);
       gl.copyTexSubImage2D(gl.TEXTURE_2D, 0, copyX, copyY, copyX, copyY, backupRect.width, backupRect.height)
-    } else gl.copyTexImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 0, 0, this.width, this.height, 0)
+    } else gl.copyTexImage2D(gl.TEXTURE_2D, 0, this.format.internalFormat, 0, 0, this.width, this.height, 0)
   };
   LayerSystem.RgbaTexture.prototype.initGlTexture = function(glTexture, width, height) {
     let gl = LayerSystem.renderCtx;
+    const format = this.format;
+    // A float texture can only be filtered linearly where the driver says so;
+    // asking for LINEAR without it renders nothing at all on some drivers.
+    const minFilter = this.useLinearFilter && format.linearFilterable ? gl.LINEAR : gl.NEAREST;
     gl.bindTexture(gl.TEXTURE_2D, glTexture);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, this.useLinearFilter ? gl.LINEAR : gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, minFilter);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null)
+    gl.texImage2D(gl.TEXTURE_2D, 0, format.internalFormat, width, height, 0, format.format, format.type, null)
   };
   LayerSystem.RgbaTexture.prototype.delete = function() {
     let gl = LayerSystem.renderCtx;
     if (this.glTexture) {
       gl.deleteTexture(this.glTexture);
       LayerSystem.textureInstanceCount--;
-      LayerSystem.textureMemoryCount -= this.width * this.height * 4
+      LayerSystem.textureMemoryCount -= this.width * this.height * bytesPerPixel(this.bitDepth)
     }
     if (this.backupTexture) {
       gl.deleteTexture(this.backupTexture);
       LayerSystem.textureInstanceCount--;
-      LayerSystem.textureMemoryCount -= this.width * this.height * 4
+      LayerSystem.textureMemoryCount -= this.width * this.height * bytesPerPixel(this.bitDepth)
     }
     if (LayerSystem.debugMode) console.log("GL.Channels instances: " + LayerSystem.textureInstanceCount + ", memory: " + LayerSystem.textureMemoryCount)
   };
   LayerSystem.RgbaTexture.prototype.clone = function() {
     let gl = LayerSystem.renderCtx;
-    const cloneTex = new LayerSystem.RgbaTexture(this.width, this.height);
+    const cloneTex = new LayerSystem.RgbaTexture(this.width, this.height, this.useLinearFilter, this.bitDepth);
     LayerSystem.bindRenderTarget(this);
     gl.bindTexture(gl.TEXTURE_2D, cloneTex.glTexture);
-    gl.copyTexImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 0, 0, this.width, this.height, 0);
+    gl.copyTexImage2D(gl.TEXTURE_2D, 0, this.format.internalFormat, 0, 0, this.width, this.height, 0);
     return cloneTex
   };
 }
