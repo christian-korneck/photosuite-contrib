@@ -137,8 +137,28 @@ function installGpuCore(LayerSystem) {
 function installShaderProgram(LayerSystem) {
   LayerSystem.ShaderProgram = function() {
     this.glProgram = null;
-    this.uniformLocations = null
+    this.uniformLocations = null;
+    /** Set by {@link compileAndLink} when the program failed to build. */
+    this.buildError = null
   };
+
+  /** Compile one stage, recording the driver's log on `shaderProgram` if it fails. */
+  function compileShaderStage(shaderProgram, gl, stageType, source, stageName) {
+    const shader = gl.createShader(stageType);
+    gl.shaderSource(shader, source);
+    gl.compileShader(shader);
+    if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+      recordShaderBuildFailure(shaderProgram, stageName, gl.getShaderInfoLog(shader));
+    }
+    return shader;
+  }
+
+  function recordShaderBuildFailure(shaderProgram, stageName, driverLog) {
+    const message = stageName + ": " + driverLog;
+    if (shaderProgram.buildError == null) shaderProgram.buildError = message;
+    else shaderProgram.buildError += "\n" + message;
+    console.error("shader build failed —", message);
+  }
   LayerSystem.ShaderProgram.lastBound = null;
   LayerSystem.ShaderProgram.prototype.cacheUniforms = function(uniformNames) {
     if (this.uniformLocations) return;
@@ -161,21 +181,26 @@ function installShaderProgram(LayerSystem) {
     }
     gl.activeTexture(gl.TEXTURE0)
   };
+  /**
+   * Build one program, leaving `buildError` set if it did not build.
+   *
+   * A failure used to be logged and forgotten, so the program stayed bound and
+   * drew black with nothing to notice it by. Recording it lets a caller that
+   * has another option — a lower precision, a narrower texture format — see
+   * that this variant is unusable instead of shipping a black document.
+   */
   LayerSystem.ShaderProgram.prototype.compileAndLink = function(fragmentSrc, vertexSrc) {
     let gl = LayerSystem.renderCtx;
-    const fragShader = gl.createShader(gl.FRAGMENT_SHADER);
-    gl.shaderSource(fragShader, fragmentSrc);
-    gl.compileShader(fragShader);
-    if (!gl.getShaderParameter(fragShader, gl.COMPILE_STATUS)) console.log(gl.getShaderInfoLog(fragShader));
-    const vertShader = gl.createShader(gl.VERTEX_SHADER);
-    gl.shaderSource(vertShader, vertexSrc);
-    gl.compileShader(vertShader);
-    if (!gl.getShaderParameter(vertShader, gl.COMPILE_STATUS)) console.log(gl.getShaderInfoLog(vertShader));
+    this.buildError = null;
+    const fragShader = compileShaderStage(this, gl, gl.FRAGMENT_SHADER, fragmentSrc, "fragment");
+    const vertShader = compileShaderStage(this, gl, gl.VERTEX_SHADER, vertexSrc, "vertex");
     const program = gl.createProgram();
     gl.attachShader(program, vertShader);
     gl.attachShader(program, fragShader);
     gl.linkProgram(program);
-    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) console.log("Could not initialise shaders");
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+      recordShaderBuildFailure(this, "link", gl.getProgramInfoLog(program));
+    }
     this.glProgram = program
   };
   LayerSystem.ShaderProgram.prototype.use = function() {

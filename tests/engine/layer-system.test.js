@@ -119,6 +119,70 @@ describe("engine/layer-system.js", () => {
     });
   });
 
+  // A shader that fails to build leaves a program that draws black. Without a
+  // record of the failure nothing can tell that apart from a black document,
+  // which is what the upcoming float-format variants need in order to fall back.
+  describe("shader build failures", () => {
+    /** A GL stub whose shader stages and link step each succeed or fail on demand. */
+    function stubGlWithBuildResults(stagesCompile, programLinks) {
+      return {
+        FRAGMENT_SHADER: 1,
+        VERTEX_SHADER: 2,
+        COMPILE_STATUS: 10,
+        LINK_STATUS: 11,
+        createShader: () => ({}),
+        shaderSource() {},
+        compileShader() {},
+        getShaderParameter: () => stagesCompile,
+        getShaderInfoLog: () => "ERROR: no matching overload for highp",
+        createProgram: () => ({}),
+        attachShader() {},
+        linkProgram() {},
+        getProgramParameter: () => programLinks,
+        getProgramInfoLog: () => "ERROR: could not link",
+      };
+    }
+
+    /** Build one program against `gl`, returning it plus anything logged. */
+    function buildProgramWith(ls, gl) {
+      const originalCtx = ls.renderCtx;
+      const originalConsoleError = console.error;
+      const logged = [];
+      console.error = (...args) => logged.push(args.join(" "));
+      try {
+        ls.renderCtx = gl;
+        const program = new ls.ShaderProgram();
+        program.compileAndLink("frag source", "vert source");
+        return { program, logged };
+      } finally {
+        console.error = originalConsoleError;
+        ls.renderCtx = originalCtx;
+      }
+    }
+
+    it("records the driver log for each stage that fails to compile", () => {
+      const ls = createLayerSystem();
+      const { program, logged } = buildProgramWith(ls, stubGlWithBuildResults(false, true));
+      assert.match(program.buildError, /fragment: ERROR: no matching overload for highp/);
+      assert.match(program.buildError, /vertex: ERROR: no matching overload for highp/);
+      assert.equal(logged.length, 2, "each failed stage is reported");
+    });
+
+    it("records a link failure even when both stages compile", () => {
+      const ls = createLayerSystem();
+      const { program } = buildProgramWith(ls, stubGlWithBuildResults(true, false));
+      assert.match(program.buildError, /^link: ERROR: could not link$/);
+    });
+
+    it("leaves buildError null when the program builds", () => {
+      const ls = createLayerSystem();
+      const { program, logged } = buildProgramWith(ls, stubGlWithBuildResults(true, true));
+      assert.equal(program.buildError, null);
+      assert.equal(logged.length, 0);
+      assert.notEqual(program.glProgram, null);
+    });
+  });
+
   // What `renderers.composite` falls back to when a caller has no layer style.
   it("defaultShapeStyleParams is a full-fill, no-knockout layer", () => {
     assert.deepEqual(defaultShapeStyleParams(), {
