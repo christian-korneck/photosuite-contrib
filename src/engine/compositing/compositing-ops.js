@@ -6,9 +6,9 @@ import { allocBuffer } from "./buffer-utils.js";
 import { copyChannel, mulDiv255 } from "./pixel-ops.js";
 import { luminanceFromRgb, rgbLuminance, rgbSaturation } from "./color-math.js";
 
-const FILL_OPACITY_BLEND_MODES = "idiv,lbrn,div ,lddg,vLit,lLit,hMix,diff".split(",");
-const NON_SEPARABLE_BLEND_MODES = "norm,dark,mul ,idiv,lbrn,lite,scrn,div ,lddg,over,sLit,hLit,vLit,lLit,pLit,hMix,diff,smud,fsub,fdiv".split(",");
-const SEPARABLE_BLEND_MODES = "dkCl,lgCl,hue ,sat ,colr,lum ".split(",");
+export const FILL_OPACITY_BLEND_MODES = "idiv,lbrn,div ,lddg,vLit,lLit,hMix,diff".split(",");
+export const NON_SEPARABLE_BLEND_MODES = "norm,dark,mul ,idiv,lbrn,lite,scrn,div ,lddg,over,sLit,hLit,vLit,lLit,pLit,hMix,diff,smud,fsub,fdiv".split(",");
+export const SEPARABLE_BLEND_MODES = "dkCl,lgCl,hue ,sat ,colr,lum ".split(",");
 
 function createDefaultBlendStyleParams() {
   return { fill: 1, blendIfTable: null, style: false, preserveDestAlpha: false };
