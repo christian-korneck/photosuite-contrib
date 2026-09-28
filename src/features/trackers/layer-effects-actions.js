@@ -6,6 +6,7 @@
 import { LayerEffectsTracker } from "./layer-effects-tracker.js";
 import "./layer-effects-stack-actions.js";
 import "./layer-effects-history.js";
+import "./document-depth-actions.js";
 import { EventChannel } from "../../document/model/tool-base.js";
 import { TrackerRegistry } from "./tracker-registry.js";
 import { KeyboardHandler } from "../../core/keyboard-handler.js";

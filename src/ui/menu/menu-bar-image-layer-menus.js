@@ -8,6 +8,7 @@ import { AdjustmentEngine } from "../../features/adjustments/adjustment-engine.j
 import { ActionDescUtil } from "../../features/scripting/action-desc.js";
 import { Layer } from "../../document/model/layer.js";
 import { ColorMode } from "../../document/model/document.js";
+import { LayerSystem } from "../../engine/layer-system.js";
 import { LayerStyleDialog } from "../dialogs/layer-style-dialog.js";
 import { FilterParameterPanel } from "../filter-panels/filter-parameter-panel.js";
 import { EventType, UiCommand } from "../../core/event-bus.js";
@@ -49,10 +50,18 @@ function menuWhenPlacedLayerSelected(currentDoc) {
 function resolveImageModeRowState(row) {
   return function(currentDoc) {
     if (currentDoc == null) return { enabled: false, checked: false };
-    const isCurrent = row.targetMode != null
-      ? currentDoc.colorMode === row.targetMode
-      : currentDoc.bitDepth === row.targetDepth;
-    return { enabled: isCurrent === true, checked: isCurrent === true };
+    if (row.targetDepth != null) {
+      const isCurrent = currentDoc.bitDepth === row.targetDepth;
+      // A wider depth needs a GPU that can render into a float attachment.
+      // Without one the document would composite on the CPU, where the mask
+      // path still works in bytes, so the row stays out of reach.
+      return {
+        enabled: isCurrent || LayerSystem.supportsBitDepth(row.targetDepth),
+        checked: isCurrent,
+      };
+    }
+    const isCurrentMode = currentDoc.colorMode === row.targetMode;
+    return { enabled: isCurrentMode === true, checked: isCurrentMode === true };
   };
 }
 

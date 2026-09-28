@@ -21,7 +21,7 @@ import { allocBuffer, equals, extractChannelByte, fillBuffer, fillBufferRect } f
 import { copyAlphaToChannel, copyChannelToAlpha, copyPixels, multiplyAlphaByAlpha, multiplyBuffers, multiplyMaskByRegion, scaleRgbaAlphaByMask } from "../../engine/compositing/pixel-ops.js";
 import { composite, compositeLayer } from "../../engine/compositing/compositing-ops.js";
 import { compositeHighDepth } from "../../engine/compositing/compositing-ops-high-depth.js";
-import { allocPixelBuffer, bitDepthOfBuffer, copyPixelRegion } from "../../engine/compositing/pixel-depth.js";
+import { allocPixelBuffer, bitDepthOfBuffer, copyPixelRegion, fillPixelBuffer } from "../../engine/compositing/pixel-depth.js";
 import { LayerSectionType } from "../model/layer.js"
 
 /** Fit width x height into a square of maxSize, preserving aspect ratio. */
@@ -184,8 +184,13 @@ function createTextureManager() {
       if (LayerSystem.webglEnabled) {
         LayerSystem.bindRenderTarget(buffer);
         LayerSystem.clearWithColor(colorLo, colorHi);
-      } else {
+      } else if (this.bitDepth === 8) {
         fillBuffer(buffer, colorLo, colorHi);
+      } else {
+        // The masked form of the byte fill preserves selected bits of a packed
+        // pixel, which has no meaning once a pixel is four wider samples. Only
+        // the plain fill is reachable at these depths.
+        fillPixelBuffer(buffer, colorLo);
       }
     },
 

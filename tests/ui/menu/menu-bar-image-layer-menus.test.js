@@ -13,6 +13,7 @@ let buildImageMenu;
 let TrackerRegistry;
 let buildLayerMenu;
 let ColorMode;
+let LayerSystem;
 
 before(async () => {
   ({ TrackerRegistry } = await import(
@@ -36,6 +37,7 @@ before(async () => {
     "../../../src/ui/menu/menu-bar-image-layer-menus.js"
   ));
   ({ ColorMode } = await import("../../../src/document/model/document.js"));
+  ({ LayerSystem } = await import("../../../src/engine/layer-system.js"));
 });
 
 describe("ui/menu/menu-bar-image-layer-menus.js", () => {
@@ -91,6 +93,21 @@ describe("ui/menu/menu-bar-image-layer-menus.js", () => {
     assert.equal(colourTable.resolveRowState(rgbDoc).checked, false);
     assert.equal(colourTable.resolveRowState(rgbDoc).enabled, false);
     assert.equal(modeRow.sub[3].resolveRowState(null).checked, false);
+
+    // A depth row opens up once the GPU can render into a float attachment.
+    // Without one the document would composite on the CPU, whose mask path is
+    // still byte-only, so the row has to stay out of reach.
+    const depthRow = modeRow.sub.find((item) => item.name === "imageMode.bitDepth32");
+    const originalSupports = LayerSystem.supportsBitDepth;
+    try {
+      LayerSystem.supportsBitDepth = () => true;
+      assert.equal(depthRow.resolveRowState(rgbDoc).enabled, true, "selectable once supported");
+      assert.equal(depthRow.resolveRowState(rgbDoc).checked, false, "but not the current depth");
+      LayerSystem.supportsBitDepth = () => false;
+      assert.equal(depthRow.resolveRowState(rgbDoc).enabled, false, "greyed without float support");
+    } finally {
+      LayerSystem.supportsBitDepth = originalSupports;
+    }
 
     // The tick follows the document rather than being hardcoded, which is what
     // lets a converted document report itself once conversion exists.

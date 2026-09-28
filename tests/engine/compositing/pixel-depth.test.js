@@ -13,6 +13,7 @@ let bitDepthOfBuffer;
 let bytesPerPixel;
 let convertPixelBuffer;
 let convertColorSample;
+let fillPixelBuffer;
 let isSupportedBitDepth;
 let pixelArrayType;
 let rescaleAlpha;
@@ -24,6 +25,7 @@ before(async () => {
     bytesPerPixel,
     convertPixelBuffer,
     convertColorSample,
+    fillPixelBuffer,
     isSupportedBitDepth,
     pixelArrayType,
     rescaleAlpha,
@@ -136,6 +138,34 @@ describe("engine/compositing/pixel-depth.js", () => {
       assert.equal(asFloat[3], Math.fround(128 / 255));
       assert.notEqual(asFloat[0], asFloat[3]);
       assert.deepEqual([...convertPixelBuffer(asFloat, 8)], [128, 128, 128, 128]);
+    });
+  });
+
+  // The byte fill writes a colour as one 32-bit word, which is one pixel only
+  // at 8-bit; wider buffers have to unpack it and write per sample.
+  describe("fillPixelBuffer", () => {
+    it("fills every pixel with the unpacked colour", () => {
+      const buffer = allocPixelBuffer(3, 16);
+      // Alpha in the top byte, then three colour channels.
+      fillPixelBuffer(buffer, (255 << 24 | 30 << 16 | 20 << 8 | 10) >>> 0);
+      assert.deepEqual([...buffer], [
+        10 * 257, 20 * 257, 30 * 257, 65535,
+        10 * 257, 20 * 257, 30 * 257, 65535,
+        10 * 257, 20 * 257, 30 * 257, 65535,
+      ]);
+    });
+
+    it("takes colour through the transfer curve and alpha past it", () => {
+      const buffer = allocPixelBuffer(1, 32);
+      fillPixelBuffer(buffer, (128 << 24 | 128 << 16 | 128 << 8 | 128) >>> 0);
+      assert.ok(buffer[0] > 0.21 && buffer[0] < 0.22, `colour was ${buffer[0]}`);
+      assert.equal(buffer[3], Math.fround(128 / 255), "alpha only rescales");
+    });
+
+    it("fills an 8-bit buffer with the plain byte values", () => {
+      const buffer = allocPixelBuffer(1, 8);
+      fillPixelBuffer(buffer, (255 << 24 | 3 << 16 | 2 << 8 | 1) >>> 0);
+      assert.deepEqual([...buffer], [1, 2, 3, 255]);
     });
   });
 

@@ -27,7 +27,8 @@ function documentWithLayer(samples, bitDepth) {
   samples.forEach((sample, i) => { buffer[i] = sample; });
   doc.layers = [{
     buffer: buffer,
-    renderCache: { dispose() { this.disposed = true; }, needsRebuild: false, dirty: false },
+    renderCache: { dispose() { this.disposed = true; }, needsRebuild: false, dirty: false, dirtyRect: null },
+    markDirty() { this.renderCache.dirtyRect = { width: 1, height: 1 }; },
   }];
   return doc;
 }
@@ -51,6 +52,20 @@ describe("document/model/document.js bit depth", () => {
     assert.equal(converted[3], 65535, "alpha rescales");
   });
 
+  // `composite` reallocates the target at the new depth and then returns early
+  // unless something is dirty, so a conversion that forgets this leaves the
+  // view showing the frame from before the conversion.
+  it("marks the whole document dirty so the next composite actually draws", () => {
+    const doc = documentWithLayer([10, 20, 30, 255], 8);
+    doc.dirtyRect = null;
+
+    doc.convertBitDepth(32);
+
+    assert.notEqual(doc.dirtyRect, null, "a converted document has to redraw");
+    assert.equal(doc.dirtyRect.width, doc.width);
+    assert.equal(doc.dirtyRect.height, doc.height);
+  });
+
   it("drops the composite buffer so it is rebuilt at the new depth", () => {
     const doc = documentWithLayer([10, 20, 30, 255], 8);
     doc.buffer = allocPixelBuffer(1, 8);
@@ -68,6 +83,17 @@ describe("document/model/document.js bit depth", () => {
 
     assert.equal(doc.layers[0].renderCache.disposed, true);
     assert.equal(doc.layers[0].renderCache.needsRebuild, true);
+  });
+
+  // Disposing the cache nulls the layer texture, and the rebuild that replaces
+  // it only runs for a layer with a dirty rect. Without that the compositor is
+  // handed a null texture and throws.
+  it("marks each layer dirty so its disposed texture is rebuilt", () => {
+    const doc = documentWithLayer([10, 20, 30, 255], 8);
+
+    doc.convertBitDepth(32);
+
+    assert.notEqual(doc.layers[0].renderCache.dirtyRect, null);
   });
 
   it("does nothing when the document is already at that depth", () => {

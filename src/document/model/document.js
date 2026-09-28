@@ -815,6 +815,10 @@ export class Document {
       layer.renderCache.dispose();
       layer.renderCache.needsRebuild = true;
       layer.renderCache.dirty = true;
+      // `dispose` leaves `layerTexture` null, and the rebuild that would
+      // replace it only runs for a layer with a dirty rect — without this the
+      // compositor is handed the null.
+      layer.markDirty();
     }
     this.bitDepth = bitDepth;
     this.buffer = null;
@@ -822,6 +826,10 @@ export class Document {
       this.glTexture.delete();
       this.glTexture = null;
     }
+    // `composite` reallocates both at the new depth but then returns early
+    // unless something is dirty, so without this the freshly allocated target
+    // is never rendered into and the view keeps showing the previous frame.
+    this.markDirty();
     this.needsComposite = true;
     this.stateChanged = true;
   }

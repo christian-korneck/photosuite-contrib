@@ -139,6 +139,28 @@ export function copyPixelRegion(srcBuffer, srcRect, dstBuffer, dstRect, clipRect
   }
 }
 
+/**
+ * Fill every pixel of `pixelBuffer` with one packed 8-bit RGBA colour.
+ *
+ * `fillBuffer` in `buffer-utils.js` writes the colour as a 32-bit word, which
+ * is one pixel only at 8-bit. The colour arrives packed because that is how
+ * every caller already holds it; it is unpacked and converted once, then
+ * written per sample.
+ */
+export function fillPixelBuffer(pixelBuffer, packedRgba) {
+  const bitDepth = bitDepthOfBuffer(pixelBuffer);
+  const channel0 = convertColorSample(packedRgba & 255, 8, bitDepth);
+  const channel1 = convertColorSample((packedRgba >>> 8) & 255, 8, bitDepth);
+  const channel2 = convertColorSample((packedRgba >>> 16) & 255, 8, bitDepth);
+  const alpha = rescaleAlpha((packedRgba >>> 24) & 255, 8, bitDepth);
+  for (let i = 0; i < pixelBuffer.length; i += SAMPLES_PER_PIXEL) {
+    pixelBuffer[i] = channel0;
+    pixelBuffer[i + 1] = channel1;
+    pixelBuffer[i + 2] = channel2;
+    pixelBuffer[i + 3] = alpha;
+  }
+}
+
 /** Alpha is linear coverage at every depth, so it only ever changes scale. */
 export function rescaleAlpha(sample, fromDepth, toDepth) {
   if (fromDepth === toDepth) return sample;

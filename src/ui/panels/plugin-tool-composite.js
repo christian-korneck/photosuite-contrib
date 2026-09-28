@@ -24,6 +24,8 @@ export function installPluginToolComposite(PluginToolPanel) {
   PluginToolPanel.unitRgbaToCssString = unitRgbaToCssString;
   PluginToolPanel.patchZeroBlueForWebglImageData = patchZeroBlueForWebglImageData;
   PluginToolPanel.WebglCanvasCompositeShader = WebglCanvasCompositeShader;
+  PluginToolPanel.buildCompositeFragmentShader = buildCompositeFragmentShader;
+  PluginToolPanel.displayEncodesLinear = displayEncodesLinear;
   WebglCanvasCompositeShader.prototype = Object.create(LayerSystem.ShaderProgram.prototype);
   WebglCanvasCompositeShader.prototype.composite = webglCompositeDraw;
   PluginToolPanel.prototype.drawWebglComposite = function() {
@@ -156,6 +158,17 @@ function drawWebglComposite(panel, PluginToolPanel) {
     glContext = LayerSystem.renderCtx;
   panel.mainCanvasCtx.clearRect(0, 0, canvasWidth, canvasHeight);
   const maskOverlaysDrawn = panel.drawActiveMaskOverlays(pluginDocument);
+  // Only the `set(canvasEl)` path below re-specifies this texture, and it takes
+  // its size from the element — so without this check a draw that skips it
+  // leaves the texture at the previous canvas size and the shader samples it
+  // stretched.
+  if (
+    docView.viewCanvasTexture != null
+    && (docView.viewCanvasTexture.width !== canvasWidth || docView.viewCanvasTexture.height !== canvasHeight)
+  ) {
+    docView.viewCanvasTexture.delete();
+    docView.viewCanvasTexture = null;
+  }
   if (docView.viewCanvasTexture == null) docView.viewCanvasTexture = new LayerSystem.RgbaTexture(canvasWidth, canvasHeight);
   if (maskOverlaysDrawn) docView.viewCanvasTexture.set(panel.canvasEl);
   else {
@@ -189,7 +202,8 @@ function drawWebglComposite(panel, PluginToolPanel) {
     canvasHeight,
     new Float32Array(bgColorRgba),
     artboardRectBuffer,
-    new Float32Array(transposeColorMatrix(buildChannelMatrix(docView.channelVisibility)))
+    new Float32Array(transposeColorMatrix(buildChannelMatrix(docView.channelVisibility))),
+    displayEncodesLinear(pluginDocument.bitDepth)
   );
   glContext.drawArrays(glContext.TRIANGLES, 0, 6);
 }
@@ -269,16 +283,38 @@ function drawCanvas2dComposite(panel, PluginToolPanel) {
  * artboard rectangles with the artboard/background color; otherwise it draws
  * the transparency checkerboard with a soft drop shadow around the document.
  */
+/**
+ * Whether a document at `bitDepth` needs encoding on the way to the canvas.
+ *
+ * 32-bit holds linear light — that is what lets it carry highlights past white
+ * — but the canvas expects sRGB. 8- and 16-bit are already sRGB-encoded, so
+ * they pass through untouched.
+ */
+function displayEncodesLinear(bitDepth) {
+  return bitDepth === 32 ? 1 : 0;
+}
+
+/**
+ * The composite fragment shader source. Split out so its text can be checked
+ * without a GL context.
+ */
+function buildCompositeFragmentShader(artboardModeEnabled, maxArtboardCount) {
+  return "\t\t\tprecision mediump float;\t\t\t\t\t\tuniform sampler2D source;\t\t\tuniform sampler2D target;\t\t\tuniform vec3 contSizeZoom;\t\t\tuniform vec2 cnvSize;\t\t\tuniform mat4 ctrn; uniform float srgbEncode; \t\t\t" + (artboardModeEnabled ? "uniform vec4 bgClr;  uniform vec4 ars[" + maxArtboardCount + "]; " : "") + "\t\t\t\t\t\tvarying vec2 tCoord;\t\t\tvarying vec2 sCoord;\t\t\tvarying vec2 gCoord;\t\t\t\t\t\t/* This approximates the error function, needed for the gaussian integral */ \t\t\tvec4 erf(vec4 x) { \t\t\t  vec4 s = sign(x), a = abs(x);\t\t\t  x = 1.0 + (0.278393 + (0.230389 + 0.078108 * (a * a)) * a) * a;\t\t\t  x *= x;  \t\t\t  return s - s / (x * x); \t\t\t} \t\t\t/* Return the mask for the shadow of a box from lower to upper */  \t\t\tfloat boxShadow(vec2 lower, vec2 upper, vec2 point, float sigma) { \t\t\t  vec4 query = vec4(point - lower, point-upper); \t\t\t  vec4 integral = 0.5 + 0.5 * erf(query * (sqrt(0.5) / sigma)); \t\t\t  return (integral.z - integral.x) * (integral.w - integral.y); \t\t\t} \t\t\t\t\t\tvec3 toSrgb(vec3 c) { vec3 p = max(c, vec3(0.0)); return mix(p*12.92, 1.055*pow(p, vec3(1.0/2.4)) - 0.055, step(vec3(0.0031308), p)); } \t\t\t\t\t\tvec4 simpleBlend(vec4 src, vec4 tgt) {\t\t\t\tfloat na = src.w + tgt.w*(1.0-src.w);\t\t\t\t/* avoid division by zero */ \t\t\t\treturn na==0.0 ? vec4(0,0,0,0) : vec4( (src.xyz*src.w + tgt.w*tgt.xyz*(1.0-src.w))*(1.0/na), na);\t\t\t} \t\t\t\t\t\t" + LayerSystem.shaderLib.in01Fn + "\t\t\t\t\t\tvoid main(void) {\t\t\t\tvec4 src = texture2D(source, tCoord); \t\t\t\tvec4 tgt = ctrn*texture2D(target, sCoord);  tgt.rgb = mix(tgt.rgb, toSrgb(tgt.rgb), srgbEncode); " + (artboardModeEnabled ? "\t\t\t\t\tbool inr = false; vec4 BG = bgClr; \t\t\t\t\tfor(int i=0; i<" + maxArtboardCount + "; i++) { \t\t\t\t\t\tvec4 ar = ars[i]; \t\t\t\t\t\tvec2 nsc = sCoord - ar.xy; \t\t\t\t\t\tif( ar.z!=0.0 && in01(nsc/ar.zw) ){\t\t\t\t\t\tinr=true; BG=vec4(1.0,1.0,1.0,1.0); }\t\t\t\t\t}\t\t\t\t" : "\t\t\t\t\tfloat shdw = 0.3*boxShadow(vec2(0,0),contSizeZoom.xy, sCoord*contSizeZoom.xy+vec2(0.0,-6.0*contSizeZoom.z) , 10.0*contSizeZoom.z);\t\t\t\t\tvec4 grid = mod(floor(gCoord.x) + floor(gCoord.y), 2.0)==1.0 ? vec4(0.784,0.784,0.784,1) : vec4(1,1,1,1);\t\t\t\t\tvec4 BG = in01(sCoord) ? grid : vec4(0.0,0.0,0.0,shdw); \t\t\t\t") + "\t\t\t\tvec4 outc = in01(sCoord) ?  simpleBlend(tgt,BG) :  BG ;  \t\t\t\tif(src.b == 0.0 && src.a >0.5) gl_FragColor = mix(outc, vec4(vec3(1,1,1)-outc.rgb,1.0), src.w); \t\t\t\telse             gl_FragColor = simpleBlend(src,outc); \t\t\t\t\t\t\t}";
+}
+
+const COMPOSITE_VERTEX_SHADER = "\t\t\tattribute vec2 verPos;\t\t\tvarying vec2 tCoord;\t\t\tvarying vec2 sCoord;\t\t\tvarying vec2 gCoord;\t\t\t\t\t\tuniform mat3 tmat;\t\t\tuniform vec4 gsize;\t\t\tvoid main(void) {\t\t\t\ttCoord = verPos;\t\t\t\tsCoord = (tmat*vec3(verPos,1.0)).xy;\t\t\t\tgCoord = (verPos-gsize.zw) * gsize.xy ; \t\t\t\tgl_Position = vec4(vec2(-1.0, 1.0) + 2.0*vec2(verPos.x,-verPos.y), 0.0, 1.0);\t\t\t}";
+
 function WebglCanvasCompositeShader(artboardModeEnabled, maxArtboardCount) {
   LayerSystem.ShaderProgram.call(this);
   this.artboardModeEnabled = artboardModeEnabled;
-  const fragmentShaderSource = "\t\t\tprecision mediump float;\t\t\t\t\t\tuniform sampler2D source;\t\t\tuniform sampler2D target;\t\t\tuniform vec3 contSizeZoom;\t\t\tuniform vec2 cnvSize;\t\t\tuniform mat4 ctrn; \t\t\t" + (artboardModeEnabled ? "uniform vec4 bgClr;  uniform vec4 ars[" + maxArtboardCount + "]; " : "") + "\t\t\t\t\t\tvarying vec2 tCoord;\t\t\tvarying vec2 sCoord;\t\t\tvarying vec2 gCoord;\t\t\t\t\t\t/* This approximates the error function, needed for the gaussian integral */ \t\t\tvec4 erf(vec4 x) { \t\t\t  vec4 s = sign(x), a = abs(x);\t\t\t  x = 1.0 + (0.278393 + (0.230389 + 0.078108 * (a * a)) * a) * a;\t\t\t  x *= x;  \t\t\t  return s - s / (x * x); \t\t\t} \t\t\t/* Return the mask for the shadow of a box from lower to upper */  \t\t\tfloat boxShadow(vec2 lower, vec2 upper, vec2 point, float sigma) { \t\t\t  vec4 query = vec4(point - lower, point-upper); \t\t\t  vec4 integral = 0.5 + 0.5 * erf(query * (sqrt(0.5) / sigma)); \t\t\t  return (integral.z - integral.x) * (integral.w - integral.y); \t\t\t} \t\t\t\t\t\tvec4 simpleBlend(vec4 src, vec4 tgt) {\t\t\t\tfloat na = src.w + tgt.w*(1.0-src.w);\t\t\t\t/* avoid division by zero */ \t\t\t\treturn na==0.0 ? vec4(0,0,0,0) : vec4( (src.xyz*src.w + tgt.w*tgt.xyz*(1.0-src.w))*(1.0/na), na);\t\t\t} \t\t\t\t\t\t" + LayerSystem.shaderLib.in01Fn + "\t\t\t\t\t\tvoid main(void) {\t\t\t\tvec4 src = texture2D(source, tCoord); \t\t\t\tvec4 tgt = ctrn*texture2D(target, sCoord); " + (artboardModeEnabled ? "\t\t\t\t\tbool inr = false; vec4 BG = bgClr; \t\t\t\t\tfor(int i=0; i<" + maxArtboardCount + "; i++) { \t\t\t\t\t\tvec4 ar = ars[i]; \t\t\t\t\t\tvec2 nsc = sCoord - ar.xy; \t\t\t\t\t\tif( ar.z!=0.0 && in01(nsc/ar.zw) ){\t\t\t\t\t\tinr=true; BG=vec4(1.0,1.0,1.0,1.0); }\t\t\t\t\t}\t\t\t\t" : "\t\t\t\t\tfloat shdw = 0.3*boxShadow(vec2(0,0),contSizeZoom.xy, sCoord*contSizeZoom.xy+vec2(0.0,-6.0*contSizeZoom.z) , 10.0*contSizeZoom.z);\t\t\t\t\tvec4 grid = mod(floor(gCoord.x) + floor(gCoord.y), 2.0)==1.0 ? vec4(0.784,0.784,0.784,1) : vec4(1,1,1,1);\t\t\t\t\tvec4 BG = in01(sCoord) ? grid : vec4(0.0,0.0,0.0,shdw); \t\t\t\t") + "\t\t\t\tvec4 outc = in01(sCoord) ?  simpleBlend(tgt,BG) :  BG ;  \t\t\t\tif(src.b == 0.0 && src.a >0.5) gl_FragColor = mix(outc, vec4(vec3(1,1,1)-outc.rgb,1.0), src.w); \t\t\t\telse             gl_FragColor = simpleBlend(src,outc); \t\t\t\t\t\t\t}",
-    vertexShaderSource = "\t\t\tattribute vec2 verPos;\t\t\tvarying vec2 tCoord;\t\t\tvarying vec2 sCoord;\t\t\tvarying vec2 gCoord;\t\t\t\t\t\tuniform mat3 tmat;\t\t\tuniform vec4 gsize;\t\t\tvoid main(void) {\t\t\t\ttCoord = verPos;\t\t\t\tsCoord = (tmat*vec3(verPos,1.0)).xy;\t\t\t\tgCoord = (verPos-gsize.zw) * gsize.xy ; \t\t\t\tgl_Position = vec4(vec2(-1.0, 1.0) + 2.0*vec2(verPos.x,-verPos.y), 0.0, 1.0);\t\t\t}";
-  this.compileAndLink(fragmentShaderSource, vertexShaderSource);
+  this.compileAndLink(
+    buildCompositeFragmentShader(artboardModeEnabled, maxArtboardCount),
+    COMPOSITE_VERTEX_SHADER,
+  );
 }
 
-function webglCompositeDraw(overlayTexture, sourceTexture, viewMatrixArray, gsizeUniform, docWidth, docHeight, invZoom, canvasWidth, canvasHeight, bgColorRgba, artboardRects, channelMatrix) {
-  this.cacheUniforms("tmat gsize source target contSizeZoom cnvSize bgClr ars ctrn".split(" "));
+function webglCompositeDraw(overlayTexture, sourceTexture, viewMatrixArray, gsizeUniform, docWidth, docHeight, invZoom, canvasWidth, canvasHeight, bgColorRgba, artboardRects, channelMatrix, srgbEncode) {
+  this.cacheUniforms("tmat gsize source target contSizeZoom cnvSize bgClr ars ctrn srgbEncode".split(" "));
   const glContext = LayerSystem.renderCtx,
     uniformLocs = this.uniformLocations;
   glContext.uniformMatrix3fv(uniformLocs.tmat, false, viewMatrixArray);
@@ -286,6 +322,7 @@ function webglCompositeDraw(overlayTexture, sourceTexture, viewMatrixArray, gsiz
   glContext.uniform3f(uniformLocs.contSizeZoom, docWidth, docHeight, invZoom);
   glContext.uniform2f(uniformLocs.cnvSize, canvasWidth, canvasHeight);
   glContext.uniformMatrix4fv(uniformLocs.ctrn, false, channelMatrix);
+  glContext.uniform1f(uniformLocs.srgbEncode, srgbEncode);
   if (this.artboardModeEnabled) {
     glContext.uniform4fv(uniformLocs.ars, artboardRects);
     glContext.uniform4fv(uniformLocs.bgClr, bgColorRgba);
