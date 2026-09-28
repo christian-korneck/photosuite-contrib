@@ -102,6 +102,13 @@ function installGpuCore(LayerSystem) {
    * attachment, so on a GPU without one they stay unavailable and those
    * documents are held at 8-bit rather than rendered wrongly.
    */
+  /**
+   * The float precision shaders need for `bitDepth`. Shader caches are keyed by
+   * this, so a `highp` variant never collides with its `mediump` twin.
+   */
+  LayerSystem.precisionForBitDepth = function(bitDepth) {
+    return bitDepth === 8 ? "mediump" : "highp";
+  };
   LayerSystem.supportsBitDepth = function(bitDepth) {
     if (bitDepth === 8) return true;
     const capabilities = LayerSystem.glCapabilities;
@@ -216,6 +223,21 @@ function installShaderProgram(LayerSystem) {
     this.buildError = null
   };
 
+  /**
+   * `fragmentSrc` with its float precision set to `precision`.
+   *
+   * `mediump` hands the source back untouched rather than rewriting it to the
+   * same thing, so an 8-bit document compiles the exact string it always has.
+   * The wider depths need `highp`: `mediump` is only guaranteed 10 bits of
+   * mantissa, which cannot even carry a 16-bit sample, and on mobile and ANGLE
+   * that guarantee is the whole budget.
+   */
+  function withShaderPrecision(fragmentSrc, precision) {
+    if (precision === "mediump") return fragmentSrc;
+    return fragmentSrc.replace(/precision\s+mediump\s+float\s*;/g, "precision " + precision + " float;");
+  }
+  LayerSystem.withShaderPrecision = withShaderPrecision;
+
   /** Compile one stage, recording the driver's log on `shaderProgram` if it fails. */
   function compileShaderStage(shaderProgram, gl, stageType, source, stageName) {
     const shader = gl.createShader(stageType);
@@ -266,7 +288,8 @@ function installShaderProgram(LayerSystem) {
   LayerSystem.ShaderProgram.prototype.compileAndLink = function(fragmentSrc, vertexSrc) {
     let gl = LayerSystem.renderCtx;
     this.buildError = null;
-    const fragShader = compileShaderStage(this, gl, gl.FRAGMENT_SHADER, fragmentSrc, "fragment");
+    const fragShader = compileShaderStage(
+      this, gl, gl.FRAGMENT_SHADER, withShaderPrecision(fragmentSrc, LayerSystem.shaderPrecision), "fragment");
     const vertShader = compileShaderStage(this, gl, gl.VERTEX_SHADER, vertexSrc, "vertex");
     const program = gl.createProgram();
     gl.attachShader(program, vertShader);
@@ -458,8 +481,9 @@ function installAdjPipeline(LayerSystem) {
   LayerSystem.adjLayerRenderer.render = function(shaderOptions, srcTexture) {
     const shaderTypes = AdjustmentShaderType;
     const shaderIndex = [shaderTypes.LookupTable, shaderTypes.HueSat, shaderTypes.Vibrance, shaderTypes.ColorMatrix, shaderTypes.ReplaceColor, shaderTypes.SelectiveColor, shaderTypes.BlackWhite, shaderTypes.IccLut].indexOf(shaderOptions.type);
-    let shader = LayerSystem.adjLayerRenderer.shaderCache[shaderOptions.type];
-    if (shader == null) shader = LayerSystem.adjLayerRenderer.shaderCache[shaderOptions.type] = new LayerSystem.adjLayerShaders[shaderIndex];
+    const cacheKey = shaderOptions.type + "|" + LayerSystem.shaderPrecision;
+    let shader = LayerSystem.adjLayerRenderer.shaderCache[cacheKey];
+    if (shader == null) shader = LayerSystem.adjLayerRenderer.shaderCache[cacheKey] = new LayerSystem.adjLayerShaders[shaderIndex];
     shader.use();
     shader.composite(srcTexture, shaderOptions);
     LayerSystem.renderCtx.drawArrays(LayerSystem.renderCtx.TRIANGLES, 0, 6)
@@ -630,8 +654,9 @@ function installFilterPipeline(LayerSystem) {
   LayerSystem.filter.render = function(filterOptions, srcTexture) {
     const filterTypes = LayerSystem.filter;
     const shaderIndex = [filterTypes.SPECULAR, filterTypes.BRISTLE, filterTypes.ANISOTROPIC, filterTypes.DEPTH_BEVEL].indexOf(filterOptions.type);
-    let shader = LayerSystem.filter.shaderCache[filterOptions.type];
-    if (shader == null) shader = LayerSystem.filter.shaderCache[filterOptions.type] = new LayerSystem.filterShaders[shaderIndex];
+    const cacheKey = filterOptions.type + "|" + LayerSystem.shaderPrecision;
+    let shader = LayerSystem.filter.shaderCache[cacheKey];
+    if (shader == null) shader = LayerSystem.filter.shaderCache[cacheKey] = new LayerSystem.filterShaders[shaderIndex];
     shader.use();
     shader.composite(srcTexture, filterOptions);
     LayerSystem.renderCtx.drawArrays(LayerSystem.renderCtx.TRIANGLES, 0, 6)
@@ -716,9 +741,18 @@ function installFilterPipeline(LayerSystem) {
 function installBlendRenderers(LayerSystem) {
   LayerSystem.renderers = {};
   LayerSystem.renderers.shaderCache = {};
-  LayerSystem.renderers.clippingRenderer = null;
-  LayerSystem.renderers.clippingNoAlphaRenderer = null;
-  LayerSystem.renderers.noClipRenderer = null;
+  /**
+   * Clipping and passthrough programs, keyed by variant *and* precision. They
+   * used to be plain singletons, which would have handed a 32-bit document the
+   * `mediump` program built for the 8-bit one that happened to render first.
+   */
+  LayerSystem.renderers.singletonShaderCache = {};
+  LayerSystem.renderers.getCachedShader = function(cacheKey, build) {
+    const key = cacheKey + "|" + LayerSystem.shaderPrecision;
+    const cache = LayerSystem.renderers.singletonShaderCache;
+    if (cache[key] == null) cache[key] = build();
+    return cache[key];
+  };
   LayerSystem.renderers.composite = function(blendMode, srcTex, srcRect, dstTex, dstRect, clipRect, opacity, shapeStyleParams) {
     if (shapeStyleParams == null) shapeStyleParams = defaultShapeStyleParams();
     if (typeof blendMode !== "string" || blendMode === "" || blendMode === "pass" || LayerSystem.renderers.blendShaderBodies[blendMode] == null) blendMode = "norm";
@@ -727,7 +761,7 @@ function installBlendRenderers(LayerSystem) {
       shapeStyleParams.fill = 1;
       shapeStyleParams.style = false
     }
-    const cacheKey = blendMode + (shapeStyleParams.blendIfTable ? "1" : "");
+    const cacheKey = blendMode + (shapeStyleParams.blendIfTable ? "1" : "") + "|" + LayerSystem.shaderPrecision;
     if (LayerSystem.renderers.shaderCache[cacheKey] == null) LayerSystem.renderers.shaderCache[cacheKey] = new LayerSystem.renderers.BlendShader(blendMode, shapeStyleParams.blendIfTable != null);
     const blendShader = LayerSystem.renderers.shaderCache[cacheKey];
     const drawRect = srcRect.intersect(dstRect).intersect(clipRect);
@@ -741,11 +775,13 @@ function installBlendRenderers(LayerSystem) {
     gl.drawArrays(gl.TRIANGLES, 0, 6)
   };
   LayerSystem.renderers.compositeWithClipping = function(clipSourceTex, srcRect, dstTex, dstRect, weightTex, weightRect, maskChannelFill, clipRect, weightScale, dissolveMode, colorSwitch) {
-    if (LayerSystem.renderers.clippingRenderer == null) LayerSystem.renderers.clippingRenderer = new LayerSystem.renderers.ClippingShader(true, true);
-    if (LayerSystem.renderers.clippingNoAlphaRenderer == null) LayerSystem.renderers.clippingNoAlphaRenderer = new LayerSystem.renderers.ClippingShader(true, false);
-    if (LayerSystem.renderers.noClipRenderer == null) LayerSystem.renderers.noClipRenderer = new LayerSystem.renderers.ClippingShader(false, true);
     const dissolveFactor = dissolveMode ? 1 : 0;
-    const clipShader = clipSourceTex ? weightTex ? LayerSystem.renderers.clippingRenderer : LayerSystem.renderers.clippingNoAlphaRenderer : LayerSystem.renderers.noClipRenderer;
+    const clipVariant = clipSourceTex ? (weightTex ? "clip" : "clipNoAlpha") : "noClip";
+    const clipShader = LayerSystem.renderers.getCachedShader(clipVariant, function() {
+      if (clipVariant === "clip") return new LayerSystem.renderers.ClippingShader(true, true);
+      if (clipVariant === "clipNoAlpha") return new LayerSystem.renderers.ClippingShader(true, false);
+      return new LayerSystem.renderers.ClippingShader(false, true);
+    });
     const colorSwitchVec = new Float32Array(colorSwitch ? [colorSwitch[0], colorSwitch[1], colorSwitch[2], 1] : [1, 1, 1, 1]);
     const drawRect = srcRect ? srcRect.intersect(dstRect).intersect(clipRect) : dstRect.intersect(clipRect);
     if (drawRect.isEmpty()) return;
@@ -760,8 +796,9 @@ function installBlendRenderers(LayerSystem) {
     gl.drawArrays(gl.TRIANGLES, 0, 6)
   };
   LayerSystem.renderers.compositePassthrough = function(srcTex, dstTex, alphaTex) {
-    if (LayerSystem.renderers.passthroughInstance == null) LayerSystem.renderers.passthroughInstance = new LayerSystem.renderers.PassthroughShader;
-    const passthroughShader = LayerSystem.renderers.passthroughInstance;
+    const passthroughShader = LayerSystem.renderers.getCachedShader("passthrough", function() {
+      return new LayerSystem.renderers.PassthroughShader();
+    });
     const fullRect = new Rect(0, 0, srcTex.width, srcTex.height);
     let gl = LayerSystem.renderCtx;
     LayerSystem.bindRenderTarget(dstTex);
@@ -910,6 +947,11 @@ export const LayerSystem = {
   webglEnabled: false,
   glContextAvailable: false,
   isWebGl2: false,
+  /**
+   * Float precision the next shader build compiles at. Set from the document's
+   * depth via `precisionForBitDepth`; 8-bit leaves it at `mediump`.
+   */
+  shaderPrecision: "mediump",
   /** Replaced by {@link detectGlCapabilities} once a context exists. */
   glCapabilities: {
     webgl2: false,

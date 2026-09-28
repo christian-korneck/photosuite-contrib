@@ -318,6 +318,55 @@ describe("engine/layer-system.js", () => {
     });
   });
 
+  // `mediump` guarantees only ~10 bits of mantissa, which cannot carry even a
+  // 16-bit sample. The wider depths need `highp` — and a variant compiled at one
+  // precision must never be handed to a document needing the other.
+  describe("shader precision", () => {
+    it("maps 8-bit to mediump and the wider depths to highp", () => {
+      const ls = createLayerSystem();
+      assert.equal(ls.precisionForBitDepth(8), "mediump");
+      assert.equal(ls.precisionForBitDepth(16), "highp");
+      assert.equal(ls.precisionForBitDepth(32), "highp");
+    });
+
+    it("leaves a mediump source byte-identical rather than rewriting it", () => {
+      const ls = createLayerSystem();
+      const source = "precision mediump float;\nvoid main(){}";
+      assert.equal(ls.withShaderPrecision(source, "mediump"), source);
+    });
+
+    it("rewrites every precision declaration for highp", () => {
+      const ls = createLayerSystem();
+      const source = "precision mediump float;\nprecision  mediump   float ;\nvoid main(){}";
+      const highp = ls.withShaderPrecision(source, "highp");
+      assert.equal(highp.indexOf("mediump"), -1, "no mediump declaration survives");
+      assert.equal(highp.match(/precision highp float;/g).length, 2);
+    });
+
+    it("defaults to mediump, so nothing changes until a document asks", () => {
+      const ls = createLayerSystem();
+      assert.equal(ls.shaderPrecision, "mediump");
+    });
+
+    it("keys cached programs by precision so variants cannot collide", () => {
+      const ls = createLayerSystem();
+      ls.renderers.singletonShaderCache = {};
+      let built = 0;
+      const build = () => ({ id: ++built });
+
+      ls.shaderPrecision = "mediump";
+      const mediumFirst = ls.renderers.getCachedShader("passthrough", build);
+      const mediumAgain = ls.renderers.getCachedShader("passthrough", build);
+      ls.shaderPrecision = "highp";
+      const high = ls.renderers.getCachedShader("passthrough", build);
+      ls.shaderPrecision = "mediump";
+
+      assert.equal(mediumAgain, mediumFirst, "same precision reuses the program");
+      assert.notEqual(high, mediumFirst, "a highp document gets its own program");
+      assert.equal(built, 2);
+    });
+  });
+
   // A shader that fails to build leaves a program that draws black. Without a
   // record of the failure nothing can tell that apart from a black document,
   // which is what the upcoming float-format variants need in order to fall back.
