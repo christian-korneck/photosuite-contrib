@@ -28,6 +28,7 @@ import { AppEvent } from "../../core/event-bus.js";
 import { packDoublesList } from "../formats/psd/descriptor-codec.js";
 import { resizeDocumentCanvas } from "./layer-translate.js";
 import { allocBuffer, copyBuffer, equals, fillBuffer } from "../../engine/compositing/buffer-utils.js";
+import { allocPixelBuffer, bitDepthOfBuffer, convertPixelBuffer } from "../../engine/compositing/pixel-depth.js";
 import { copyAlphaToChannel, copyPixels, getZeroBuffer, isBufferUniform, multiplyBuffers } from "../../engine/compositing/pixel-ops.js";
 import { rectToPathOutline } from "../../engine/compositing/anti-alias.js";
 import { countSubpaths } from "../../engine/compositing/path-records.js";
@@ -770,11 +771,22 @@ export class Document {
   ensureCompositeBuffer() {
     const docWidth = this.width;
     const docHeight = this.height;
-    if (LayerSystem.webglEnabled && this.glTexture == null) this.glTexture = new LayerSystem.RgbaTexture(docWidth, docHeight, true);
-    if (this.buffer == null || this.buffer.length != docWidth * docHeight * 4 || (LayerSystem.webglEnabled && (this.glTexture.width != docWidth || this.glTexture.height != docHeight))) {
-      this.buffer = allocBuffer(docWidth * docHeight * 4);
+    const bitDepth = this.bitDepth;
+    if (LayerSystem.webglEnabled && this.glTexture == null) {
+      this.glTexture = new LayerSystem.RgbaTexture(docWidth, docHeight, true, bitDepth);
+    }
+    // Sample count is the same at every depth, so a buffer of the right length
+    // can still be the wrong type — a depth change has to force a realloc.
+    const needsRealloc = this.buffer == null
+      || this.buffer.length != docWidth * docHeight * 4
+      || bitDepthOfBuffer(this.buffer) != bitDepth
+      || (LayerSystem.webglEnabled && (this.glTexture.width != docWidth || this.glTexture.height != docHeight || this.glTexture.bitDepth != bitDepth));
+    if (needsRealloc) {
+      this.buffer = allocPixelBuffer(docWidth * docHeight, bitDepth);
       if (this.glTexture) this.glTexture.delete();
-      if (LayerSystem.webglEnabled) this.glTexture = new LayerSystem.RgbaTexture(docWidth, docHeight, true);
+      if (LayerSystem.webglEnabled) {
+        this.glTexture = new LayerSystem.RgbaTexture(docWidth, docHeight, true, bitDepth);
+      }
     }
   }
 
@@ -783,6 +795,46 @@ export class Document {
     if (LayerSystem.webglEnabled) {
       this.glTexture.set(this.buffer);
     }
+  }
+
+  /**
+   * Re-hold every layer's pixels at `bitDepth`.
+   *
+   * Widening is lossless and narrowing is not: going down from 32-bit clips
+   * everything above white and drops the precision the wider samples carried,
+   * exactly as it would in Photoshop. Layer buffers convert in place; the
+   * composite buffer and its texture are dropped so the next composite
+   * reallocates them at the new depth.
+   */
+  convertBitDepth(bitDepth) {
+    if (bitDepth === this.bitDepth) return;
+    for (let layerIdx = 0; layerIdx < this.layers.length; layerIdx++) {
+      const layer = this.layers[layerIdx];
+      if (layer.buffer != null) layer.buffer = convertPixelBuffer(layer.buffer, bitDepth);
+      // Every cached texture and scratch buffer is still at the old depth.
+      layer.renderCache.dispose();
+      layer.renderCache.needsRebuild = true;
+      layer.renderCache.dirty = true;
+    }
+    this.bitDepth = bitDepth;
+    this.buffer = null;
+    if (this.glTexture) {
+      this.glTexture.delete();
+      this.glTexture = null;
+    }
+    this.needsComposite = true;
+    this.stateChanged = true;
+  }
+
+  /**
+   * The composited pixels as 8-bit RGBA, whatever depth the document is held
+   * at. Everything downstream of compositing — resampling, `ImageData`, the
+   * thumbnails — works in bytes, so this is the one place a wider document
+   * narrows for display, and where values above white finally clip.
+   */
+  getDisplayBuffer() {
+    if (this.buffer == null || this.bitDepth === 8) return this.buffer;
+    return convertPixelBuffer(this.buffer, 8);
   }
 
   composite(maxLayerDepth) {

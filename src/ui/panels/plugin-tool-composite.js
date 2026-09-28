@@ -252,7 +252,9 @@ function drawCanvas2dComposite(panel, PluginToolPanel) {
     docView.scratchRgbaBuffer = allocBuffer(childrenBuffer.area() * 4);
   }
   docView.scratchRgbaBuffer.fill(0);
-  resampleImageBufferWithMatrix(pluginDocument.buffer, docBounds, viewMatrix, docView.scratchRgbaBuffer, childrenBuffer);
+  // Resampling and `ImageData` below both work in bytes, so a wider document
+  // narrows here — the point where anything above white finally clips.
+  resampleImageBufferWithMatrix(pluginDocument.getDisplayBuffer(), docBounds, viewMatrix, docView.scratchRgbaBuffer, childrenBuffer);
   if (docView.channelVisibility[0] + docView.channelVisibility[1] + docView.channelVisibility[2] != 3)
     transformInterleaved(docView.scratchRgbaBuffer, docView.scratchRgbaBuffer, buildChannelMatrix(docView.channelVisibility));
   panel.overlayCanvasCtx.putImageData(new ImageData(new Uint8ClampedArray(docView.scratchRgbaBuffer.buffer), childrenBuffer.width, childrenBuffer.height), 0, 0);

@@ -270,9 +270,12 @@ export class Layer {
       rect = applyFilterMask.rect
     }
     var textureRect = rect;
-    if (LayerSystem.webglEnabled != this.renderCache.webglEnabled || this.renderCache.layerTexture == null || this.renderCache.layerTexture.width != textureRect.width || this.renderCache.layerTexture.height != textureRect.height) {
+    // A texture built for another depth cannot be reused: it would take the
+    // wider samples as bytes.
+    var layerBitDepth = doc != null && doc.bitDepth != null ? doc.bitDepth : 8;
+    if (LayerSystem.webglEnabled != this.renderCache.webglEnabled || this.renderCache.layerTexture == null || this.renderCache.layerTexture.width != textureRect.width || this.renderCache.layerTexture.height != textureRect.height || this.renderCache.layerTexture.bitDepth != layerBitDepth) {
       if (this.renderCache.layerTexture) this.renderCache.layerTexture.delete();
-      this.renderCache.layerTexture = new LayerSystem.RgbaTexture(textureRect.width, textureRect.height);
+      this.renderCache.layerTexture = new LayerSystem.RgbaTexture(textureRect.width, textureRect.height, false, layerBitDepth);
       this.renderCache.layerTexture.set(buffer)
     } else {
       var clonedRect = this.renderCache.dirtyRect.clone();
