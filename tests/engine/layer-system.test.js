@@ -52,8 +52,63 @@ function stubWebGlCanvas() {
   };
 }
 
+/**
+ * `initLayerSystemGl` keeps the first context it is given, so a test wanting a
+ * different one has to clear the canvas that records it.
+ */
+function resetGlSingleton() {
+  const layerSystem = initLayerSystemGl();
+  layerSystem.offscreenCanvas = null;
+  layerSystem.webglEnabled = false;
+  layerSystem.glContextAvailable = false;
+  layerSystem.isWebGl2 = false;
+}
+
 function createLayerSystem() {
+  resetGlSingleton();
   stubWebGlCanvas();
+  return initLayerSystemGl();
+}
+
+/**
+ * Stub a canvas that also offers a "webgl2" context, granting only the
+ * extensions in `grantedExtensions`.
+ */
+function stubWebGl2Canvas(grantedExtensions) {
+  const gl = {
+    createFramebuffer: () => ({}),
+    bindFramebuffer() {},
+    disable() {},
+    createBuffer: () => ({}),
+    bindBuffer() {},
+    bufferData() {},
+    enableVertexAttribArray() {},
+    vertexAttribPointer() {},
+    getParameter: () => 8192,
+    getExtension(name) {
+      if (grantedExtensions.indexOf(name) === -1) return null;
+      return name === "EXT_texture_norm16" ? { RGBA16_EXT: 0x805b } : {};
+    },
+    RGBA: 6408,
+    RGBA32F: 34836,
+    UNSIGNED_BYTE: 5121,
+    UNSIGNED_SHORT: 5123,
+    FLOAT: 5126,
+    FRAGMENT_SHADER: 1,
+    VERTEX_SHADER: 2,
+    ARRAY_BUFFER: 3,
+    STATIC_DRAW: 4,
+    FRAMEBUFFER: 6,
+    BLEND: 19,
+    DEPTH_TEST: 20,
+  };
+  resetGlSingleton();
+  document.createElement = (tag) => {
+    if (tag === "canvas") {
+      return { getContext: (type) => (type === "webgl2" ? gl : null) };
+    }
+    return { style: {} };
+  };
   return initLayerSystemGl();
 }
 
@@ -116,6 +171,59 @@ describe("engine/layer-system.js", () => {
       ColorMatrix: 5,
       ReplaceColor: 6,
       IccLut: 7,
+    });
+  });
+
+  // 16- and 32-bit documents composite by rendering into a texture, so the
+  // question is never "can this GPU hold the format" but "can it attach it to a
+  // framebuffer" — which is an extension even under WebGL2.
+  describe("bit-depth capability detection", () => {
+    it("offers only 8-bit on a WebGL1 context", () => {
+      const ls = createLayerSystem();
+      assert.equal(ls.isWebGl2, false);
+      assert.equal(ls.glCapabilities.webgl2, false);
+      assert.deepEqual([8, 16, 32].map((d) => ls.supportsBitDepth(d)), [true, false, false]);
+    });
+
+    it("offers the wider depths when float attachments are renderable", () => {
+      const ls = stubWebGl2Canvas(["EXT_color_buffer_float"]);
+      assert.equal(ls.isWebGl2, true);
+      assert.deepEqual([8, 16, 32].map((d) => ls.supportsBitDepth(d)), [true, true, true]);
+    });
+
+    it("keeps the wider depths off a WebGL2 context that cannot render float", () => {
+      const ls = stubWebGl2Canvas([]);
+      assert.equal(ls.isWebGl2, true);
+      assert.deepEqual([8, 16, 32].map((d) => ls.supportsBitDepth(d)), [true, false, false]);
+    });
+
+    it("leaves 8-bit on WebGL1's unsized RGBA so the common path is unchanged", () => {
+      const ls = createLayerSystem();
+      const format = ls.textureFormatFor(8);
+      assert.equal(format.internalFormat, format.format, "8-bit stays unsized");
+      assert.equal(format.linearFilterable, true);
+    });
+
+    it("prefers a normalized RGBA16 attachment for 16-bit when it exists", () => {
+      const withNorm16 = stubWebGl2Canvas(["EXT_color_buffer_float", "EXT_texture_norm16"]);
+      const format = withNorm16.textureFormatFor(16);
+      assert.equal(format.internalFormat, 0x805b, "uses the extension's RGBA16_EXT");
+      assert.equal(format.type, 5123, "unsigned short samples");
+    });
+
+    it("falls back to RGBA32F for 16-bit, which carries the samples exactly", () => {
+      // Deliberately not RGBA16F — an 11-bit mantissa cannot hold 16-bit values.
+      const noNorm16 = stubWebGl2Canvas(["EXT_color_buffer_float"]);
+      const format = noNorm16.textureFormatFor(16);
+      assert.equal(format.internalFormat, 34836, "RGBA32F");
+      assert.equal(format.type, 5126, "float samples");
+    });
+
+    it("drops float textures to nearest filtering without OES_texture_float_linear", () => {
+      const noLinear = stubWebGl2Canvas(["EXT_color_buffer_float"]);
+      assert.equal(noLinear.textureFormatFor(32).linearFilterable, false);
+      const withLinear = stubWebGl2Canvas(["EXT_color_buffer_float", "OES_texture_float_linear"]);
+      assert.equal(withLinear.textureFormatFor(32).linearFilterable, true);
     });
   });
 

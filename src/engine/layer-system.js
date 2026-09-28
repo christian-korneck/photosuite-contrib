@@ -27,6 +27,33 @@ function rectToViewportCoords(rect, viewport) {
     return new Float32Array([(rect.x - viewport.x) / viewport.width, (rect.y - viewport.y) / viewport.height, rect.width / viewport.width, rect.height / viewport.height])
 }
 
+/**
+ * What this GPU can store and composite beyond plain 8-bit RGBA.
+ *
+ * Compositing renders *into* a texture, so a depth is only usable when the
+ * driver can attach that format to a framebuffer — merely being able to hold
+ * the texture is not enough, which is why `EXT_color_buffer_float` gates both
+ * float depths. 16-bit prefers a normalized `RGBA16` attachment and falls back
+ * to `RGBA32F`, which carries a 16-bit sample exactly. `RGBA16F` is never a
+ * substitute: 11 bits of mantissa cannot.
+ */
+function detectGlCapabilities(gl, isWebGl2) {
+  const capabilities = {
+    webgl2: isWebGl2,
+    colorBufferFloat: false,
+    textureNorm16: false,
+    floatLinearFilter: false,
+  };
+  if (!isWebGl2) return capabilities;
+  capabilities.colorBufferFloat = gl.getExtension("EXT_color_buffer_float") != null;
+  capabilities.floatLinearFilter = gl.getExtension("OES_texture_float_linear") != null;
+  // Held rather than discarded: the sized format enum lives on the extension
+  // object, not on the context.
+  capabilities.norm16Extension = gl.getExtension("EXT_texture_norm16");
+  capabilities.textureNorm16 = capabilities.norm16Extension != null;
+  return capabilities;
+}
+
 function tryInitWebGl(layerSystem) {
   const contextAttribs = {
       alpha: true,
@@ -41,12 +68,18 @@ function tryInitWebGl(layerSystem) {
       preserveDrawingBuffer: true
     };
 
-  let gl;
+  // WebGL2 first, because 16- and 32-bit documents need sized integer and float
+  // attachments that WebGL1 cannot give. Everything here still runs GLSL ES
+  // 1.00, which WebGL2 accepts, so a WebGL1 context behaves exactly as before.
+  let gl = layerSystem.offscreenCanvas.getContext("webgl2", contextAttribs);
+  const isWebGl2 = gl != null;
   if (!gl) gl = layerSystem.offscreenCanvas.getContext("webgl", contextAttribs);
   if (!gl) gl = layerSystem.offscreenCanvas.getContext("experimental-webgl", contextAttribs);
   if (gl) {
     layerSystem.webglEnabled = true;
     layerSystem.glContextAvailable = true;
+    layerSystem.isWebGl2 = isWebGl2;
+    layerSystem.glCapabilities = detectGlCapabilities(gl, isWebGl2);
     layerSystem.renderCtx = gl;
     layerSystem.glFramebuffer = gl.createFramebuffer();
     gl.bindFramebuffer(gl.FRAMEBUFFER, layerSystem.glFramebuffer);
@@ -61,6 +94,46 @@ function tryInitWebGl(layerSystem) {
 }
 
 function installGpuCore(LayerSystem) {
+  /**
+   * Whether documents at `bitDepth` can composite on the GPU here.
+   *
+   * 8-bit is always available. The wider depths need a float-renderable
+   * attachment, so on a GPU without one they stay unavailable and those
+   * documents are held at 8-bit rather than rendered wrongly.
+   */
+  LayerSystem.supportsBitDepth = function(bitDepth) {
+    if (bitDepth === 8) return true;
+    const capabilities = LayerSystem.glCapabilities;
+    if (capabilities == null || !capabilities.webgl2) return false;
+    return capabilities.colorBufferFloat;
+  };
+  /**
+   * The `internalFormat` / `format` / `type` triple for storing `bitDepth`.
+   *
+   * 8-bit deliberately keeps WebGL1's unsized `RGBA`, so the common path
+   * uploads and reads back byte-for-byte as it always has.
+   */
+  LayerSystem.textureFormatFor = function(bitDepth) {
+    const gl = LayerSystem.renderCtx;
+    if (bitDepth === 8) {
+      return { internalFormat: gl.RGBA, format: gl.RGBA, type: gl.UNSIGNED_BYTE, linearFilterable: true };
+    }
+    const capabilities = LayerSystem.glCapabilities;
+    if (bitDepth === 16 && capabilities.textureNorm16) {
+      return {
+        internalFormat: capabilities.norm16Extension.RGBA16_EXT,
+        format: gl.RGBA,
+        type: gl.UNSIGNED_SHORT,
+        linearFilterable: true,
+      };
+    }
+    return {
+      internalFormat: gl.RGBA32F,
+      format: gl.RGBA,
+      type: gl.FLOAT,
+      linearFilterable: capabilities.floatLinearFilter,
+    };
+  };
   LayerSystem.checkTextureSize = function(maxSide) {
     let gl = LayerSystem.renderCtx;
     if (maxSide > gl.getParameter(gl.MAX_TEXTURE_SIZE)) {
@@ -813,6 +886,15 @@ export function defaultShapeStyleParams() {
 export const LayerSystem = {
   webglEnabled: false,
   glContextAvailable: false,
+  isWebGl2: false,
+  /** Replaced by {@link detectGlCapabilities} once a context exists. */
+  glCapabilities: {
+    webgl2: false,
+    colorBufferFloat: false,
+    textureNorm16: false,
+    floatLinearFilter: false,
+    norm16Extension: null,
+  },
   debugMode: false,
   offscreenCanvas: null,
   renderCtx: null,
