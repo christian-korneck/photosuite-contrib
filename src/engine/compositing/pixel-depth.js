@@ -117,6 +117,28 @@ export function convertColorSample(sample, fromDepth, toDepth) {
     : Math.round(sample / SCALE_8_TO_16);
 }
 
+/**
+ * Copy a rectangular region between two buffers of the same depth.
+ *
+ * `copyPixels` in `pixel-ops.js` moves one pixel as one 32-bit word, which is
+ * only a pixel at 8-bit; here a row is copied as samples, so it holds at any
+ * depth. Callers keep using that one for 8-bit, where word-at-a-time is faster.
+ */
+export function copyPixelRegion(srcBuffer, srcRect, dstBuffer, dstRect, clipRect) {
+  const region = clipRect == null ? srcRect.intersect(dstRect) : srcRect.intersect(dstRect).intersect(clipRect);
+  if (region.width <= 0 || region.height <= 0) return;
+  const srcOffX = Math.max(0, region.x - srcRect.x);
+  const srcOffY = Math.max(0, region.y - srcRect.y);
+  const dstOffX = Math.max(0, region.x - dstRect.x);
+  const dstOffY = Math.max(0, region.y - dstRect.y);
+  const rowSamples = region.width * SAMPLES_PER_PIXEL;
+  for (let row = 0; row < region.height; row++) {
+    const srcStart = ((srcOffY + row) * srcRect.width + srcOffX) * SAMPLES_PER_PIXEL;
+    const dstStart = ((dstOffY + row) * dstRect.width + dstOffX) * SAMPLES_PER_PIXEL;
+    dstBuffer.set(srcBuffer.subarray(srcStart, srcStart + rowSamples), dstStart);
+  }
+}
+
 /** Alpha is linear coverage at every depth, so it only ever changes scale. */
 export function rescaleAlpha(sample, fromDepth, toDepth) {
   if (fromDepth === toDepth) return sample;

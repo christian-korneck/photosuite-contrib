@@ -20,6 +20,8 @@ import { adjustmentKeyOf } from "../formats/psd/adjustment-parsers.js";
 import { allocBuffer, equals, extractChannelByte, fillBuffer, fillBufferRect } from "../../engine/compositing/buffer-utils.js";
 import { copyAlphaToChannel, copyChannelToAlpha, copyPixels, multiplyAlphaByAlpha, multiplyBuffers, multiplyMaskByRegion, scaleRgbaAlphaByMask } from "../../engine/compositing/pixel-ops.js";
 import { composite, compositeLayer } from "../../engine/compositing/compositing-ops.js";
+import { compositeHighDepth } from "../../engine/compositing/compositing-ops-high-depth.js";
+import { allocPixelBuffer, bitDepthOfBuffer, copyPixelRegion } from "../../engine/compositing/pixel-depth.js";
 import { LayerSectionType } from "../model/layer.js"
 
 /** Fit width x height into a square of maxSize, preserving aspect ratio. */
@@ -53,41 +55,62 @@ function collectClippingMaskSections(children, childIdx) {
  */
 function createTextureManager() {
   return {
+    /**
+     * Bits per channel of the document being composited. Every render target
+     * this manager hands out is allocated at this depth, and the shaders are
+     * built at the matching precision.
+     */
+    bitDepth: 8,
+
+    setBitDepth(bitDepth) {
+      this.bitDepth = bitDepth;
+      LayerSystem.shaderPrecision = LayerSystem.precisionForBitDepth(bitDepth);
+    },
+
     delete(existingTarget) {
       if (existingTarget && existingTarget.c) existingTarget.delete();
     },
 
     createRenderTarget(width, height) {
       return LayerSystem.webglEnabled
-        ? new LayerSystem.RgbaTexture(width, height)
-        : allocBuffer(width * height * 4);
+        ? new LayerSystem.RgbaTexture(width, height, false, this.bitDepth)
+        : allocPixelBuffer(width * height, this.bitDepth);
     },
 
     ensureTexture(existingTarget, width, height) {
       if (LayerSystem.webglEnabled) {
-        if (existingTarget == null || existingTarget.width !== width || existingTarget.height !== height) {
+        if (
+          existingTarget == null
+          || existingTarget.width !== width
+          || existingTarget.height !== height
+          || existingTarget.bitDepth !== this.bitDepth
+        ) {
           this.delete(existingTarget);
-          return new LayerSystem.RgbaTexture(width, height);
+          return new LayerSystem.RgbaTexture(width, height, false, this.bitDepth);
         }
       } else if (
         existingTarget == null ||
         !ArrayBuffer.isView(existingTarget) ||
-        existingTarget.length !== width * height * 4
+        existingTarget.length !== width * height * 4 ||
+        // Sample count is the same at every depth, so the element type is what
+        // says whether a reused buffer is actually the right one.
+        bitDepthOfBuffer(existingTarget) !== this.bitDepth
       ) {
         this.delete(existingTarget);
-        return allocBuffer(width * height * 4);
+        return allocPixelBuffer(width * height, this.bitDepth);
       }
       return existingTarget;
     },
 
     copyChannel(srcBuffer, srcRect, destBuffer, destRect, clipRect) {
-      (LayerSystem.webglEnabled ? LayerSystem.copyGpuTextureRegion : copyPixels)(
-        srcBuffer,
-        srcRect,
-        destBuffer,
-        destRect,
-        clipRect,
-      );
+      if (LayerSystem.webglEnabled) {
+        LayerSystem.copyGpuTextureRegion(srcBuffer, srcRect, destBuffer, destRect, clipRect);
+        return;
+      }
+      // `copyPixels` moves a pixel as a 32-bit word, which is only a pixel at
+      // 8-bit; wider buffers copy by sample instead.
+      const copyFn = this.bitDepth === 8 ? copyPixels : copyPixelRegion;
+      copyFn(srcBuffer, srcRect, destBuffer, destRect, clipRect);
     },
 
     compositeWithClipping(
@@ -132,8 +155,19 @@ function createTextureManager() {
           opacity,
           shapeStyle,
         );
-      } else {
+      } else if (this.bitDepth === 8) {
         composite(
+          blendMode,
+          srcBuffer,
+          srcRect,
+          destBuffer,
+          destRect,
+          clipRect,
+          opacity,
+          shapeStyle,
+        );
+      } else {
+        compositeHighDepth(
           blendMode,
           srcBuffer,
           srcRect,
@@ -549,6 +583,9 @@ export function compositeLayerGpu(section, destBuffer, destRect, clipRect, doc, 
   const layer = section.layer;
   const shapeStyle = LayerStyleRenderer.buildShapeRenderStyle(layer);
   const texMgr = textureManager;
+  // Recursion re-sets this to the same value, which is what keeps the whole
+  // tree on one depth even though each call composites its own section.
+  texMgr.setBitDepth(doc != null && doc.bitDepth != null ? doc.bitDepth : 8);
   const maskOrVector = layer.hasFillContent() ? layer.getMask() : layer.d;
   if (!layer.isVisible()) return;
   if (layer.isVectorShape() && maskOrVector.rect.isEmpty()) return;
