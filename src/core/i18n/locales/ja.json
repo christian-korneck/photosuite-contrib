@@ -76,6 +76,20 @@
     "autoColour": "オートカラー",
     "replaceColour": "色を交換"
   },
+  "imageModeMenuTitle": "モード",
+  "imageMode": {
+    "bitmap": "モノクロ 2 階調",
+    "greyscale": "グレースケール",
+    "indexedColour": "インデックスカラー",
+    "rgbColour": "RGB カラー",
+    "cmykColour": "CMYK カラー",
+    "labColour": "Lab カラー",
+    "multichannel": "マルチチャンネル",
+    "bitDepth8": "8 bit/チャンネル",
+    "bitDepth16": "16 bit/チャンネル",
+    "bitDepth32": "32 bit/チャンネル",
+    "colourTable": "カラーテーブル..."
+  },
   "clipboard": {
     "cut": "切り取り",
     "copy": "コピー",

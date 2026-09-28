@@ -76,6 +76,20 @@
     "autoColour": "Automatisk färg",
     "replaceColour": "Byt färg"
   },
+  "imageModeMenuTitle": "Läge",
+  "imageMode": {
+    "bitmap": "Bitmapp",
+    "greyscale": "Gråskala",
+    "indexedColour": "Indexerad färg",
+    "rgbColour": "RGB-färg",
+    "cmykColour": "CMYK-färg",
+    "labColour": "Lab-färg",
+    "multichannel": "Flerkanal",
+    "bitDepth8": "8 bitar/kanal",
+    "bitDepth16": "16 bitar/kanal",
+    "bitDepth32": "32 bitar/kanal",
+    "colourTable": "Färgtabell..."
+  },
   "clipboard": {
     "cut": "Klipp ut",
     "copy": "Kopiera",

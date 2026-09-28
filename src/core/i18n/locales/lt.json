@@ -76,6 +76,20 @@
     "autoColour": "Automatinis spalvų koregavimas",
     "replaceColour": "Pakeisti spalvą"
   },
+  "imageModeMenuTitle": "Režimas",
+  "imageMode": {
+    "bitmap": "Taškinė grafika",
+    "greyscale": "Pilkieji tonai",
+    "indexedColour": "Indeksuota spalva",
+    "rgbColour": "RGB spalva",
+    "cmykColour": "CMYK spalva",
+    "labColour": "Lab spalva",
+    "multichannel": "Daugiakanalis",
+    "bitDepth8": "8 bitai/kanalui",
+    "bitDepth16": "16 bitų/kanalui",
+    "bitDepth32": "32 bitai/kanalui",
+    "colourTable": "Spalvų lentelė..."
+  },
   "clipboard": {
     "cut": "Iškirpti",
     "copy": "Kopijuoti",

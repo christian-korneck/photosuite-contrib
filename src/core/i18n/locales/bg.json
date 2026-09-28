@@ -76,6 +76,20 @@
     "autoColour": "Автоматичен Цвят",
     "replaceColour": "Сменете цвета"
   },
+  "imageModeMenuTitle": "Режим",
+  "imageMode": {
+    "bitmap": "Растерно изображение",
+    "greyscale": "Нива на сивото",
+    "indexedColour": "Индексиран цвят",
+    "rgbColour": "RGB цвят",
+    "cmykColour": "CMYK цвят",
+    "labColour": "Lab цвят",
+    "multichannel": "Многоканален",
+    "bitDepth8": "8 бита/канал",
+    "bitDepth16": "16 бита/канал",
+    "bitDepth32": "32 бита/канал",
+    "colourTable": "Цветова таблица..."
+  },
   "clipboard": {
     "cut": "Изрязване",
     "copy": "Копиране",

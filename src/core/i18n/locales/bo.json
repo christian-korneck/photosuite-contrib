@@ -76,6 +76,20 @@
     "autoColour": "ཁ་དོག་རང་སྒྲིག",
     "replaceColour": "ཚོས་བརྗེ།"
   },
+  "imageModeMenuTitle": "རྣམ་པ།",
+  "imageMode": {
+    "bitmap": "པར་རིས།",
+    "greyscale": "ཐལ་དོག་རིམ་པ།",
+    "indexedColour": "གདམ་བྱའི་ཚོན།",
+    "rgbColour": "RGB ཚོན།",
+    "cmykColour": "CMYK ཚོན།",
+    "labColour": "Lab ཚོན།",
+    "multichannel": "ལམ་མང་།",
+    "bitDepth8": "8 Bits/རྒྱུ་ལམ།",
+    "bitDepth16": "16 Bits/རྒྱུ་ལམ།",
+    "bitDepth32": "32 Bits/རྒྱུ་ལམ།",
+    "colourTable": "ཚོན་རེའུ་མིག..."
+  },
   "clipboard": {
     "cut": "གཏུབ།",
     "copy": "བཤུ།",

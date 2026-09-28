@@ -76,6 +76,20 @@
     "autoColour": "自动颜色",
     "replaceColour": "微软雅黑"
   },
+  "imageModeMenuTitle": "模式",
+  "imageMode": {
+    "bitmap": "位图",
+    "greyscale": "灰度",
+    "indexedColour": "索引颜色",
+    "rgbColour": "RGB 颜色",
+    "cmykColour": "CMYK 颜色",
+    "labColour": "Lab 颜色",
+    "multichannel": "多通道",
+    "bitDepth8": "8 位/通道",
+    "bitDepth16": "16 位/通道",
+    "bitDepth32": "32 位/通道",
+    "colourTable": "颜色表..."
+  },
   "clipboard": {
     "cut": "剪切",
     "copy": "复制",

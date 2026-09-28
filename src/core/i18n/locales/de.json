@@ -76,6 +76,20 @@
     "autoColour": "Auto-Farbe",
     "replaceColour": "Farbe ersetzen"
   },
+  "imageModeMenuTitle": "Modus",
+  "imageMode": {
+    "bitmap": "Bitmap",
+    "greyscale": "Graustufen",
+    "indexedColour": "Indizierte Farbe",
+    "rgbColour": "RGB-Farbe",
+    "cmykColour": "CMYK-Farbe",
+    "labColour": "Lab-Farbe",
+    "multichannel": "Mehrkanal",
+    "bitDepth8": "8 Bit/Kanal",
+    "bitDepth16": "16 Bit/Kanal",
+    "bitDepth32": "32 Bit/Kanal",
+    "colourTable": "Farbtabelle..."
+  },
   "clipboard": {
     "cut": "Ausschneiden",
     "copy": "Kopieren",

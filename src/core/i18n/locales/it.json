@@ -76,6 +76,20 @@
     "autoColour": "Colore automatico",
     "replaceColour": "Sostituzione Colore"
   },
+  "imageModeMenuTitle": "Metodo",
+  "imageMode": {
+    "bitmap": "Bitmap",
+    "greyscale": "Scala di grigio",
+    "indexedColour": "Colore indicizzato",
+    "rgbColour": "Colore RGB",
+    "cmykColour": "Colore CMYK",
+    "labColour": "Colore Lab",
+    "multichannel": "Multicanale",
+    "bitDepth8": "8 bit/canale",
+    "bitDepth16": "16 bit/canale",
+    "bitDepth32": "32 bit/canale",
+    "colourTable": "Tavola colore..."
+  },
   "clipboard": {
     "cut": "Taglia",
     "copy": "Copia",

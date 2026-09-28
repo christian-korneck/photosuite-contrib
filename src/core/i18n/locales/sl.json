@@ -76,6 +76,20 @@
     "autoColour": "Samodejna barva",
     "replaceColour": "Nadomesti barvo"
   },
+  "imageModeMenuTitle": "Način",
+  "imageMode": {
+    "bitmap": "Bitna slika",
+    "greyscale": "Sivine",
+    "indexedColour": "Indeksirane barve",
+    "rgbColour": "RGB barva",
+    "cmykColour": "CMYK barva",
+    "labColour": "Lab barva",
+    "multichannel": "Večkanalno",
+    "bitDepth8": "8 bitov/kanal",
+    "bitDepth16": "16 bitov/kanal",
+    "bitDepth32": "32 bitov/kanal",
+    "colourTable": "Tabela barv..."
+  },
   "clipboard": {
     "cut": "Izreži",
     "copy": "Kopiraj",

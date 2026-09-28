@@ -76,6 +76,20 @@
     "autoColour": "Auto Ngjyre",
     "replaceColour": "Zevendeso Ngjyren"
   },
+  "imageModeMenuTitle": "Mënyra",
+  "imageMode": {
+    "bitmap": "Harta e biteve",
+    "greyscale": "Shkallë gri",
+    "indexedColour": "Ngjyrë e indeksuar",
+    "rgbColour": "Ngjyrë RGB",
+    "cmykColour": "Ngjyrë CMYK",
+    "labColour": "Ngjyrë Lab",
+    "multichannel": "Shumëkanalshe",
+    "bitDepth8": "8 Bit/Kanal",
+    "bitDepth16": "16 Bit/Kanal",
+    "bitDepth32": "32 Bit/Kanal",
+    "colourTable": "Tabela e ngjyrave..."
+  },
   "clipboard": {
     "cut": "Preje",
     "copy": "Kopjo",

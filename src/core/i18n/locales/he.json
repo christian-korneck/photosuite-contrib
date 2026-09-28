@@ -76,6 +76,20 @@
     "autoColour": "צבע אוטומטי",
     "replaceColour": "החלף צבע"
   },
+  "imageModeMenuTitle": "מצב",
+  "imageMode": {
+    "bitmap": "מפת סיביות",
+    "greyscale": "גווני אפור",
+    "indexedColour": "צבע באינדקס",
+    "rgbColour": "צבע RGB",
+    "cmykColour": "צבע CMYK",
+    "labColour": "צבע Lab",
+    "multichannel": "רב-ערוצי",
+    "bitDepth8": "8 סיביות/ערוץ",
+    "bitDepth16": "16 סיביות/ערוץ",
+    "bitDepth32": "32 סיביות/ערוץ",
+    "colourTable": "טבלת צבעים..."
+  },
   "clipboard": {
     "cut": "גזור",
     "copy": "העתק",

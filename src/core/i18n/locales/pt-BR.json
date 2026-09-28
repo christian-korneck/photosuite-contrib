@@ -76,6 +76,20 @@
     "autoColour": "Cor automática",
     "replaceColour": "Substituir cor"
   },
+  "imageModeMenuTitle": "Modo",
+  "imageMode": {
+    "bitmap": "Bitmap",
+    "greyscale": "Tons de cinza",
+    "indexedColour": "Cores indexadas",
+    "rgbColour": "Cor RGB",
+    "cmykColour": "Cor CMYK",
+    "labColour": "Cor Lab",
+    "multichannel": "Multicanal",
+    "bitDepth8": "8 bits/canal",
+    "bitDepth16": "16 bits/canal",
+    "bitDepth32": "32 bits/canal",
+    "colourTable": "Tabela de cores..."
+  },
   "clipboard": {
     "cut": "Cortar",
     "copy": "Copiar",

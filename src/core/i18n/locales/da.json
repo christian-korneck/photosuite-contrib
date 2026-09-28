@@ -76,6 +76,20 @@
     "autoColour": "Autofarve",
     "replaceColour": "Erstat farve"
   },
+  "imageModeMenuTitle": "Tilstand",
+  "imageMode": {
+    "bitmap": "Bitmap",
+    "greyscale": "Gråtoner",
+    "indexedColour": "Indekseret farve",
+    "rgbColour": "RGB-farve",
+    "cmykColour": "CMYK-farve",
+    "labColour": "Lab-farve",
+    "multichannel": "Multikanal",
+    "bitDepth8": "8 bit/kanal",
+    "bitDepth16": "16 bit/kanal",
+    "bitDepth32": "32 bit/kanal",
+    "colourTable": "Farvetabel..."
+  },
   "clipboard": {
     "cut": "Klip",
     "copy": "Kopier",

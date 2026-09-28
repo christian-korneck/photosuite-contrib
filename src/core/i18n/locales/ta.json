@@ -76,6 +76,20 @@
     "autoColour": "தானியங்கு நிறம்",
     "replaceColour": "நிறத்தை இடமாற்று"
   },
+  "imageModeMenuTitle": "முறைமை",
+  "imageMode": {
+    "bitmap": "பிட்மேப்",
+    "greyscale": "சாம்பல்நிற அளவீடு",
+    "indexedColour": "அட்டவணைப்படுத்தப்பட்ட நிறம்",
+    "rgbColour": "RGB நிறம்",
+    "cmykColour": "CMYK நிறம்",
+    "labColour": "Lab நிறம்",
+    "multichannel": "பல்வழித்தடம்",
+    "bitDepth8": "8 பிட்கள்/ஒளிவழித்தடம்",
+    "bitDepth16": "16 பிட்கள்/ஒளிவழித்தடம்",
+    "bitDepth32": "32 பிட்கள்/ஒளிவழித்தடம்",
+    "colourTable": "நிற அட்டவணை..."
+  },
   "clipboard": {
     "cut": "வெட்டு",
     "copy": "நகலெடு",

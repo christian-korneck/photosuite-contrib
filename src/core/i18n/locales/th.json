@@ -76,6 +76,20 @@
     "autoColour": "ปรับสีอัตโนมัติ",
     "replaceColour": "แทนที่สี"
   },
+  "imageModeMenuTitle": "โหมด",
+  "imageMode": {
+    "bitmap": "บิตแมป",
+    "greyscale": "เกรย์สเกล",
+    "indexedColour": "สีที่ทำดัชนี",
+    "rgbColour": "สี RGB",
+    "cmykColour": "สี CMYK",
+    "labColour": "สี Lab",
+    "multichannel": "หลายช่องสัญญาณ",
+    "bitDepth8": "8 บิต/ช่อง",
+    "bitDepth16": "16 บิต/ช่อง",
+    "bitDepth32": "32 บิต/ช่อง",
+    "colourTable": "ตารางสี..."
+  },
   "clipboard": {
     "cut": "ตัด",
     "copy": "คัดลอก",

@@ -76,6 +76,20 @@
     "autoColour": "자동 색상",
     "replaceColour": "색상 대체"
   },
+  "imageModeMenuTitle": "모드",
+  "imageMode": {
+    "bitmap": "비트맵",
+    "greyscale": "회색 음영",
+    "indexedColour": "인덱스 색상",
+    "rgbColour": "RGB 색상",
+    "cmykColour": "CMYK 색상",
+    "labColour": "Lab 색상",
+    "multichannel": "다중 채널",
+    "bitDepth8": "8비트/채널",
+    "bitDepth16": "16비트/채널",
+    "bitDepth32": "32비트/채널",
+    "colourTable": "색상표..."
+  },
   "clipboard": {
     "cut": "잘라내기",
     "copy": "복사",

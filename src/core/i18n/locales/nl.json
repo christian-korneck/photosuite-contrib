@@ -76,6 +76,20 @@
     "autoColour": "Automatische kleuren",
     "replaceColour": "Vervang kleur"
   },
+  "imageModeMenuTitle": "Modus",
+  "imageMode": {
+    "bitmap": "Bitmap",
+    "greyscale": "Grijswaarden",
+    "indexedColour": "Geïndexeerde kleur",
+    "rgbColour": "RGB-kleur",
+    "cmykColour": "CMYK-kleur",
+    "labColour": "Lab-kleur",
+    "multichannel": "Meerkanaals",
+    "bitDepth8": "8 bits/kanaal",
+    "bitDepth16": "16 bits/kanaal",
+    "bitDepth32": "32 bits/kanaal",
+    "colourTable": "Kleurentabel..."
+  },
   "clipboard": {
     "cut": "Knippen",
     "copy": "Kopiëren",

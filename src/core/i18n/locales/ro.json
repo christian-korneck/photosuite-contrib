@@ -76,6 +76,20 @@
     "autoColour": "Culoare automată",
     "replaceColour": "Înlocuiți culoarea"
   },
+  "imageModeMenuTitle": "Mod",
+  "imageMode": {
+    "bitmap": "Bitmap",
+    "greyscale": "Tonuri de gri",
+    "indexedColour": "Culoare indexată",
+    "rgbColour": "Culoare RGB",
+    "cmykColour": "Culoare CMYK",
+    "labColour": "Culoare Lab",
+    "multichannel": "Multicanal",
+    "bitDepth8": "8 biți/canal",
+    "bitDepth16": "16 biți/canal",
+    "bitDepth32": "32 biți/canal",
+    "colourTable": "Tabel de culori..."
+  },
   "clipboard": {
     "cut": "Taie",
     "copy": "Copiază",

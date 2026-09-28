@@ -76,6 +76,20 @@
     "autoColour": "Warna Otomatis",
     "replaceColour": "Ganti Warna"
   },
+  "imageModeMenuTitle": "Mode",
+  "imageMode": {
+    "bitmap": "Bitmap",
+    "greyscale": "Skala abu-abu",
+    "indexedColour": "Warna Terindeks",
+    "rgbColour": "Warna RGB",
+    "cmykColour": "Warna CMYK",
+    "labColour": "Warna Lab",
+    "multichannel": "Multisaluran",
+    "bitDepth8": "8 Bit/Saluran",
+    "bitDepth16": "16 Bit/Saluran",
+    "bitDepth32": "32 Bit/Saluran",
+    "colourTable": "Tabel Warna..."
+  },
   "clipboard": {
     "cut": "Potong",
     "copy": "Salin",

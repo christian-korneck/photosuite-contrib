@@ -76,6 +76,20 @@
     "autoColour": "Automaattinen väri",
     "replaceColour": "Korvaa väri"
   },
+  "imageModeMenuTitle": "Tila",
+  "imageMode": {
+    "bitmap": "Bittikartta",
+    "greyscale": "Harmaasävy",
+    "indexedColour": "Indeksoitu väri",
+    "rgbColour": "RGB-väri",
+    "cmykColour": "CMYK-väri",
+    "labColour": "Lab-väri",
+    "multichannel": "Monikanava",
+    "bitDepth8": "8 bittiä/kanava",
+    "bitDepth16": "16 bittiä/kanava",
+    "bitDepth32": "32 bittiä/kanava",
+    "colourTable": "Väritaulukko..."
+  },
   "clipboard": {
     "cut": "Leikkaa",
     "copy": "Kopioi",

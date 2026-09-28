@@ -76,6 +76,20 @@
     "autoColour": "تلوين تلقائي",
     "replaceColour": "استبدال اللون"
   },
+  "imageModeMenuTitle": "النمط",
+  "imageMode": {
+    "bitmap": "نقطي",
+    "greyscale": "تدرج رمادي",
+    "indexedColour": "ألوان مفهرسة",
+    "rgbColour": "ألوان RGB",
+    "cmykColour": "ألوان CMYK",
+    "labColour": "ألوان Lab",
+    "multichannel": "متعدد القنوات",
+    "bitDepth8": "8 بت/قناة",
+    "bitDepth16": "16 بت/قناة",
+    "bitDepth32": "32 بت/قناة",
+    "colourTable": "جدول الألوان..."
+  },
   "clipboard": {
     "cut": "قطع",
     "copy": "نسخ",

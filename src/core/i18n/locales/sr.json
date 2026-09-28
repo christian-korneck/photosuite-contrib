@@ -76,6 +76,20 @@
     "autoColour": "Аутоматска боја",
     "replaceColour": "Замени боју"
   },
+  "imageModeMenuTitle": "Режим",
+  "imageMode": {
+    "bitmap": "Битмапа",
+    "greyscale": "Нијансе сиве",
+    "indexedColour": "Индексирана боја",
+    "rgbColour": "RGB боја",
+    "cmykColour": "CMYK боја",
+    "labColour": "Lab боја",
+    "multichannel": "Вишеканални",
+    "bitDepth8": "8 бита/канал",
+    "bitDepth16": "16 бита/канал",
+    "bitDepth32": "32 бита/канал",
+    "colourTable": "Табела боја..."
+  },
   "clipboard": {
     "cut": "Исеци",
     "copy": "Копирај",

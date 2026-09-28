@@ -76,6 +76,20 @@
     "autoColour": "Automatisk farge",
     "replaceColour": "Erstatt farge"
   },
+  "imageModeMenuTitle": "Modus",
+  "imageMode": {
+    "bitmap": "Punktgrafikk",
+    "greyscale": "Gråtoner",
+    "indexedColour": "Indeksert farge",
+    "rgbColour": "RGB-farge",
+    "cmykColour": "CMYK-farge",
+    "labColour": "Lab-farge",
+    "multichannel": "Flerkanals",
+    "bitDepth8": "8 biter/kanal",
+    "bitDepth16": "16 biter/kanal",
+    "bitDepth32": "32 biter/kanal",
+    "colourTable": "Fargetabell..."
+  },
   "clipboard": {
     "cut": "Klipp ut",
     "copy": "Kopier",

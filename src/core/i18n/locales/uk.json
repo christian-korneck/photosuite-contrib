@@ -76,6 +76,20 @@
     "autoColour": "Автоматичний колір",
     "replaceColour": "Замінити колір"
   },
+  "imageModeMenuTitle": "Режим",
+  "imageMode": {
+    "bitmap": "Бітовий формат",
+    "greyscale": "Градації сірого",
+    "indexedColour": "Індексовані кольори",
+    "rgbColour": "Колір RGB",
+    "cmykColour": "Колір CMYK",
+    "labColour": "Колір Lab",
+    "multichannel": "Багатоканальний",
+    "bitDepth8": "8 бітів/канал",
+    "bitDepth16": "16 бітів/канал",
+    "bitDepth32": "32 біти/канал",
+    "colourTable": "Таблиця кольорів..."
+  },
   "clipboard": {
     "cut": "Вирізати",
     "copy": "Копіювати",

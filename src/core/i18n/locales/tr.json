@@ -76,6 +76,20 @@
     "autoColour": "Otomatik Renk",
     "replaceColour": "Renkleri Değiştir"
   },
+  "imageModeMenuTitle": "Mod",
+  "imageMode": {
+    "bitmap": "Bit eşlem",
+    "greyscale": "Gri tonlama",
+    "indexedColour": "Dizinlenmiş Renk",
+    "rgbColour": "RGB Rengi",
+    "cmykColour": "CMYK Rengi",
+    "labColour": "Lab Rengi",
+    "multichannel": "Çok Kanallı",
+    "bitDepth8": "8 Bit/Kanal",
+    "bitDepth16": "16 Bit/Kanal",
+    "bitDepth32": "32 Bit/Kanal",
+    "colourTable": "Renk Tablosu..."
+  },
   "clipboard": {
     "cut": "Kes",
     "copy": "Kopyala",

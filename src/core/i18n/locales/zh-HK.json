@@ -76,6 +76,20 @@
     "autoColour": "自動色彩",
     "replaceColour": "取代顏色"
   },
+  "imageModeMenuTitle": "模式",
+  "imageMode": {
+    "bitmap": "點陣圖",
+    "greyscale": "灰階",
+    "indexedColour": "索引色",
+    "rgbColour": "RGB 色彩",
+    "cmykColour": "CMYK 色彩",
+    "labColour": "Lab 色彩",
+    "multichannel": "多色板",
+    "bitDepth8": "8 位元/色版",
+    "bitDepth16": "16 位元/色版",
+    "bitDepth32": "32 位元/色版",
+    "colourTable": "顏色表..."
+  },
   "clipboard": {
     "cut": "剪下",
     "copy": "複製",

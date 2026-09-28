@@ -76,6 +76,20 @@
     "autoColour": "Auto Värv",
     "replaceColour": "Asenda Värv"
   },
+  "imageModeMenuTitle": "Režiim",
+  "imageMode": {
+    "bitmap": "Bittraster",
+    "greyscale": "Halltoonid",
+    "indexedColour": "Indekseeritud värv",
+    "rgbColour": "RGB-värv",
+    "cmykColour": "CMYK-värv",
+    "labColour": "Lab-värv",
+    "multichannel": "Mitmekanaliline",
+    "bitDepth8": "8 bitti/kanal",
+    "bitDepth16": "16 bitti/kanal",
+    "bitDepth32": "32 bitti/kanal",
+    "colourTable": "Värvitabel..."
+  },
   "clipboard": {
     "cut": "Lõika",
     "copy": "Kopeeri",

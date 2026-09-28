@@ -76,6 +76,20 @@
     "autoColour": "Auto-kolor",
     "replaceColour": "Zamień kolor"
   },
+  "imageModeMenuTitle": "Tryb",
+  "imageMode": {
+    "bitmap": "Mapa bitowa",
+    "greyscale": "Skala szarości",
+    "indexedColour": "Kolor indeksowany",
+    "rgbColour": "Kolor RGB",
+    "cmykColour": "Kolor CMYK",
+    "labColour": "Kolor Lab",
+    "multichannel": "Wielokanałowy",
+    "bitDepth8": "8 bitów/kanał",
+    "bitDepth16": "16 bitów/kanał",
+    "bitDepth32": "32 bity/kanał",
+    "colourTable": "Tabela kolorów..."
+  },
   "clipboard": {
     "cut": "Wytnij",
     "copy": "Kopiuj",

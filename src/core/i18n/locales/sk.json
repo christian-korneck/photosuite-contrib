@@ -76,6 +76,20 @@
     "autoColour": "Auto Farby",
     "replaceColour": "Nahradiť farbu"
   },
+  "imageModeMenuTitle": "Režim",
+  "imageMode": {
+    "bitmap": "Bitová mapa",
+    "greyscale": "Odtiene sivej",
+    "indexedColour": "Indexovaná farba",
+    "rgbColour": "Farba RGB",
+    "cmykColour": "Farba CMYK",
+    "labColour": "Farba Lab",
+    "multichannel": "Viac kanálov",
+    "bitDepth8": "8 bitov/kanál",
+    "bitDepth16": "16 bitov/kanál",
+    "bitDepth32": "32 bitov/kanál",
+    "colourTable": "Tabuľka farieb..."
+  },
   "clipboard": {
     "cut": "Vystrihnúť",
     "copy": "Kopírovať",

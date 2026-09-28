@@ -76,6 +76,20 @@
     "autoColour": "Automatska boja",
     "replaceColour": "Zamijeni boju"
   },
+  "imageModeMenuTitle": "Način",
+  "imageMode": {
+    "bitmap": "Bitmapa",
+    "greyscale": "Sivi tonovi",
+    "indexedColour": "Indeksirane boje",
+    "rgbColour": "RGB boja",
+    "cmykColour": "CMYK boja",
+    "labColour": "Lab boja",
+    "multichannel": "Višekanalni",
+    "bitDepth8": "8 bita/kanal",
+    "bitDepth16": "16 bita/kanal",
+    "bitDepth32": "32 bita/kanal",
+    "colourTable": "Tablica boja..."
+  },
   "clipboard": {
     "cut": "Izreži",
     "copy": "Kopiraj",

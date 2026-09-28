@@ -76,6 +76,20 @@
     "autoColour": "Αυτόματο χρώμα",
     "replaceColour": "Αντικατάσταση χρώματος"
   },
+  "imageModeMenuTitle": "Λειτουργία",
+  "imageMode": {
+    "bitmap": "Bitmap",
+    "greyscale": "Κλίμακα του γκρι",
+    "indexedColour": "Χρώμα από πίνακα",
+    "rgbColour": "Χρώμα RGB",
+    "cmykColour": "Χρώμα CMYK",
+    "labColour": "Χρώμα Lab",
+    "multichannel": "Πολλαπλά κανάλια",
+    "bitDepth8": "8 Bit/Κανάλι",
+    "bitDepth16": "16 Bit/Κανάλι",
+    "bitDepth32": "32 Bit/Κανάλι",
+    "colourTable": "Πίνακας χρωμάτων..."
+  },
   "clipboard": {
     "cut": "Αποκοπή",
     "copy": "Αντιγραφή",

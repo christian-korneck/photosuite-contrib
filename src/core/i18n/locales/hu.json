@@ -76,6 +76,20 @@
     "autoColour": "Automatikus szín",
     "replaceColour": "Színcsere"
   },
+  "imageModeMenuTitle": "Mód",
+  "imageMode": {
+    "bitmap": "Bitkép",
+    "greyscale": "Szürkeárnyalatos",
+    "indexedColour": "Indexelt szín",
+    "rgbColour": "RGB szín",
+    "cmykColour": "CMYK szín",
+    "labColour": "Lab szín",
+    "multichannel": "Többcsatornás",
+    "bitDepth8": "8 bit/csatorna",
+    "bitDepth16": "16 bit/csatorna",
+    "bitDepth32": "32 bit/csatorna",
+    "colourTable": "Színtáblázat..."
+  },
   "clipboard": {
     "cut": "Vágás",
     "copy": "Másolás",

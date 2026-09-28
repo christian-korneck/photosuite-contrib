@@ -76,6 +76,20 @@
     "autoColour": "Tự chỉnh màu",
     "replaceColour": "Thay thế màu"
   },
+  "imageModeMenuTitle": "Chế độ",
+  "imageMode": {
+    "bitmap": "Bitmap",
+    "greyscale": "Thang độ xám",
+    "indexedColour": "Màu chỉ mục",
+    "rgbColour": "Màu RGB",
+    "cmykColour": "Màu CMYK",
+    "labColour": "Màu Lab",
+    "multichannel": "Đa kênh",
+    "bitDepth8": "8 Bit/Kênh",
+    "bitDepth16": "16 Bit/Kênh",
+    "bitDepth32": "32 Bit/Kênh",
+    "colourTable": "Bảng màu..."
+  },
   "clipboard": {
     "cut": "Cắt",
     "copy": "Sao chép",
