@@ -15,6 +15,7 @@ node_modules/
 # Misc
 .env
 src-tauri/gen/
+todo.md
 
 # pdf.js source cloned on demand by vendor/js/pdfjs-codecs/build.sh
 src/vendor/pdfjs/

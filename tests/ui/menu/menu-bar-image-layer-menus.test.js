@@ -12,6 +12,7 @@ globalThis.SmartFilterBase = globalThis.SmartFilterBase || {};
 let buildImageMenu;
 let TrackerRegistry;
 let buildLayerMenu;
+let ColorMode;
 
 before(async () => {
   ({ TrackerRegistry } = await import(
@@ -34,6 +35,7 @@ before(async () => {
   ({ buildImageMenu, buildLayerMenu } = await import(
     "../../../src/ui/menu/menu-bar-image-layer-menus.js"
   ));
+  ({ ColorMode } = await import("../../../src/document/model/document.js"));
 });
 
 describe("ui/menu/menu-bar-image-layer-menus.js", () => {
@@ -46,6 +48,68 @@ describe("ui/menu/menu-bar-image-layer-menus.js", () => {
     );
     assert.ok(cropAction);
     assert.equal("aiF" in cropAction.payload, false);
+  });
+
+  it("Image > Mode lists colour modes and bit depths, with only RGB/8bpc live", () => {
+    const imageMenu = buildImageMenu();
+    const modeRowIndex = imageMenu.items.findIndex((item) => item.name === "imageModeMenuTitle");
+    assert.equal(modeRowIndex, 0);
+    const modeRow = imageMenu.items[modeRowIndex];
+    const modeActions = imageMenu.menuActions[modeRowIndex];
+
+    // items and menuActions are index-parallel, and that holds inside `sub` too.
+    assert.equal(modeRow.sub.length, modeActions.sub.length);
+    assert.deepEqual(
+      modeRow.sub.map((item) => item.name),
+      [
+        "imageMode.bitmap",
+        "imageMode.greyscale",
+        "imageMode.indexedColour",
+        "imageMode.rgbColour",
+        "imageMode.cmykColour",
+        "imageMode.labColour",
+        "imageMode.multichannel",
+        "imageMode.bitDepth8",
+        "imageMode.bitDepth16",
+        "imageMode.bitDepth32",
+        "imageMode.colourTable",
+      ]
+    );
+
+    // Only the rows naming where the document already is are selectable, since
+    // picking those needs no conversion engine. Everything else is disabled
+    // until there is one.
+    const rgbDoc = { colorMode: ColorMode.rgb, bitDepth: 8 };
+    for (const item of modeRow.sub) {
+      const state = item.resolveRowState(rgbDoc);
+      const isCurrent = item.name === "imageMode.rgbColour" || item.name === "imageMode.bitDepth8";
+      assert.equal(state.checked === true, isCurrent, item.name);
+      assert.equal(state.enabled === true, isCurrent, item.name);
+    }
+    // The palette editor is neither a mode nor a depth, so it never ticks.
+    const colourTable = modeRow.sub.find((item) => item.name === "imageMode.colourTable");
+    assert.equal(colourTable.resolveRowState(rgbDoc).checked, false);
+    assert.equal(colourTable.resolveRowState(rgbDoc).enabled, false);
+    assert.equal(modeRow.sub[3].resolveRowState(null).checked, false);
+
+    // The tick follows the document rather than being hardcoded, which is what
+    // lets a converted document report itself once conversion exists.
+    const labDoc = { colorMode: ColorMode.lab, bitDepth: 32 };
+    const checkedForLabDoc = modeRow.sub
+      .filter((item) => item.resolveRowState(labDoc).checked === true)
+      .map((item) => item.name);
+    assert.deepEqual(checkedForLabDoc, ["imageMode.labColour", "imageMode.bitDepth32"]);
+    assert.equal(
+      modeRow.sub.find((item) => item.name === "imageMode.rgbColour").resolveRowState(labDoc).enabled,
+      false,
+      "a mode the document is not in stays unselectable",
+    );
+
+    // The macOS menu drops any row without a dispatch path or a submenu, so a
+    // row missing its action would silently vanish from the native menu bar.
+    for (const action of modeActions.sub) {
+      assert.ok(action.appEventType, "every Mode row needs an action to render natively");
+    }
   });
 
   it("Layer > New offers via-copy and via-cut, each wired to its own action", () => {

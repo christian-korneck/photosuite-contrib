@@ -5,6 +5,7 @@
 /* global pako */
 import { BinaryUtils } from "../../../core/binary/binary-utils.js";
 import { PlanarRgbaBuffer, allocBuffer, interleavedToPlanar, planarToInterleaved } from "../../../engine/compositing/buffer-utils.js";
+import { linearToSrgb } from "../../../engine/compositing/color-math.js";
 
 /** PSD channel-compression scheme codes. */
 const COMPRESS_RAW = 0;
@@ -178,22 +179,40 @@ function decompressChannel(isPSB, bitDepth, data, width, height, pos, compressio
     }
   }
 
-  if (bitDepth == 16) {
-    var buf16 = allocBuffer(width * height);
-    for (var i = 0; i < rawByteCount; i += 2) buf16[i >>> 1] = output[i];
-    output = buf16;
-  }
+  if (bitDepth == 16) output = shortChannelToBytes(output, width * height);
   if (bitDepth == 32) output = floatChannelToBytes(output, width * height);
   return output;
 }
 
 /**
+ * A 16-bit channel as one byte per sample.
+ *
+ * Samples are big-endian over the full 0..65535 range, so the exact scale to a
+ * byte is 65535 / 255 = 257. Keeping only the high byte divides by 256 and
+ * truncates instead, which drifts as much as a level dark through the midtones.
+ *
+ * @param {Uint8Array} channelBytes Raw sample bytes.
+ * @param {number} sampleCount Samples to convert.
+ * @returns {Uint8Array} One byte per sample.
+ */
+function shortChannelToBytes(channelBytes, sampleCount) {
+  var bytes = allocBuffer(sampleCount);
+  for (var i = 0; i < sampleCount; i++) {
+    var value = (channelBytes[i * 2] << 8) | channelBytes[i * 2 + 1];
+    bytes[i] = Math.round(value / 257);
+  }
+  return bytes;
+}
+
+/**
  * A 32-bit channel as one byte per sample.
  *
- * Samples are big-endian floats where 0..1 spans black to white, so the whole
- * document is scaled to the 8-bit buffers the compositor works in. Values
- * outside that range belong to a wider dynamic range than the compositor
- * carries, and are clamped rather than wrapped.
+ * Samples are big-endian floats carrying *linear* light, which is what 32-bit
+ * mode exists for, so they need the sRGB transfer curve on the way to the byte
+ * buffers the compositor works in. Scaling them straight to bytes renders a
+ * linear 0.5 as 127 instead of 187, which reads as a badly darkened document.
+ * Values above 1 belong to a wider dynamic range than the compositor carries,
+ * and are clamped rather than wrapped. `raster-hdr.js` maps EXR the same way.
  *
  * @param {Uint8Array} channelBytes Raw sample bytes.
  * @param {number} sampleCount Samples to convert.
@@ -206,7 +225,7 @@ function floatChannelToBytes(channelBytes, sampleCount) {
     var value = samples.getFloat32(i * 4, false);
     if (!(value > 0)) bytes[i] = 0;
     else if (value >= 1) bytes[i] = 255;
-    else bytes[i] = Math.round(value * 255);
+    else bytes[i] = Math.round(linearToSrgb(value) * 255);
   }
   return bytes;
 }

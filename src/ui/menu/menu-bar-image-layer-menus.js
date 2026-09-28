@@ -7,6 +7,7 @@ import { ToolId, EventChannel } from "../../document/model/tool-base.js";
 import { AdjustmentEngine } from "../../features/adjustments/adjustment-engine.js";
 import { ActionDescUtil } from "../../features/scripting/action-desc.js";
 import { Layer } from "../../document/model/layer.js";
+import { ColorMode } from "../../document/model/document.js";
 import { LayerStyleDialog } from "../dialogs/layer-style-dialog.js";
 import { FilterParameterPanel } from "../filter-panels/filter-parameter-panel.js";
 import { EventType, UiCommand } from "../../core/event-bus.js";
@@ -34,6 +35,66 @@ function menuWhenPlacedLayerSelected(currentDoc) {
   return {
     enabled: currentDoc != null && currentDoc.selectedLayerIndices.length != 0 && currentDoc.layers[currentDoc.selectedLayerIndices[0]].add.placedData != null
   };
+}
+
+/**
+ * Row state for one Image → Mode row.
+ *
+ * A row is ticked when it names the mode or depth the open document is already
+ * held in, and only those rows are selectable — picking the mode you are
+ * already in is the one conversion that needs no conversion engine, and it
+ * lands on the unhandled `convertMode` action, which does nothing. Every other
+ * row stays disabled until there is an engine behind it.
+ */
+function resolveImageModeRowState(row) {
+  return function(currentDoc) {
+    if (currentDoc == null) return { enabled: false, checked: false };
+    const isCurrent = row.targetMode != null
+      ? currentDoc.colorMode === row.targetMode
+      : currentDoc.bitDepth === row.targetDepth;
+    return { enabled: isCurrent === true, checked: isCurrent === true };
+  };
+}
+
+/**
+ * Image → Mode submenu: colour mode and bit depth, mirroring Photoshop's layout.
+ *
+ * Every row carries an action even though none can fire, because the macOS menu
+ * builds a row only from a dispatch path or a nested submenu
+ * (`src-tauri/src/native_menu.rs`) — rows without one are dropped, which left
+ * the whole submenu empty. The Recent Files placeholder is built the same way.
+ */
+function buildImageModeSubmenu() {
+  const rows = [
+    { name: "imageMode.bitmap", targetMode: ColorMode.bitmap },
+    { name: "imageMode.greyscale", targetMode: ColorMode.greyscale },
+    { name: "imageMode.indexedColour", targetMode: ColorMode.indexed, separatorAfter: true },
+    { name: "imageMode.rgbColour", targetMode: ColorMode.rgb },
+    { name: "imageMode.cmykColour", targetMode: ColorMode.cmyk },
+    { name: "imageMode.labColour", targetMode: ColorMode.lab },
+    { name: "imageMode.multichannel", targetMode: ColorMode.multichannel, separatorAfter: true },
+    { name: "imageMode.bitDepth8", targetDepth: 8 },
+    { name: "imageMode.bitDepth16", targetDepth: 16 },
+    { name: "imageMode.bitDepth32", targetDepth: 32, separatorAfter: true },
+    // The palette editor, not a mode — it has no target to compare against.
+    { name: "imageMode.colourTable" }
+  ];
+  const items = [];
+  const actions = [];
+  for (const row of rows) {
+    const item = { name: row.name, resolveRowState: resolveImageModeRowState(row) };
+    if (row.separatorAfter) item.separatorAfter = true;
+    items.push(item);
+    const payload = { actionKind: "convertMode" };
+    if (row.targetMode != null) payload.targetMode = row.targetMode;
+    if (row.targetDepth != null) payload.targetDepth = row.targetDepth;
+    actions.push({
+      appEventType: EventType.documentAction,
+      documentModelType: EventChannel.EVENT_DOCUMENT,
+      payload: payload
+    });
+  }
+  return { items: items, actions: actions };
 }
 
 /** Smart-object stack-mode submenu (stats ops) for Layer → Smart Object. */
@@ -74,11 +135,19 @@ export function buildImageMenu() {
     keyboard = mods.keyboard,
     ctrlMod = mods.ctrlMod,
     shiftMod = mods.shiftMod,
-    altMod = mods.altMod;
+    altMod = mods.altMod,
+    modeSubmenu = buildImageModeSubmenu();
   // `items` and `menuActions` are parallel arrays, index-for-index.
   return {
     name: "topMenu.image",
     items: [
+    // Colour mode / bit depth. See buildImageModeSubmenu.
+    {
+      name: "imageModeMenuTitle",
+      resolveRowState: menuWhenDocOpen,
+      separatorAfter: true,
+      sub: modeSubmenu.items
+    },
     // Adjustments submenu, generated from AdjustmentEngine's registered ops.
     {
       name: "adjustmentsMenuTitle",
@@ -208,6 +277,8 @@ export function buildImageMenu() {
       opensDialog: true
     }],
     menuActions: [{
+      sub: modeSubmenu.actions
+    }, {
       sub: function() {
         const adjustmentActions = [];
         for (let adjustmentKey in AdjustmentEngine.names) {

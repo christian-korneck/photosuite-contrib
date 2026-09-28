@@ -40,6 +40,23 @@ import {
 } from "../render/layer-compositor.js";
 
 /**
+ * Colour modes a document can be held in, numbered the way a PSD header numbers
+ * them. Only `rgb` is ever held in memory today — importers convert anything
+ * else on the way in — so a document's `colorMode` describes the pixels it
+ * actually has, not the file it came from.
+ */
+export const ColorMode = Object.freeze({
+  bitmap: 0,
+  greyscale: 1,
+  indexed: 2,
+  rgb: 3,
+  cmyk: 4,
+  multichannel: 5,
+  duotone: 6,
+  lab: 7,
+});
+
+/**
  * One undo/redo history step for `Document.history`.
  *
  * `name` is the locale key, `routingChannel` scopes the originating tool/tracker,
@@ -210,6 +227,10 @@ export class Document {
     this.add = {};
     this.buffer = null;
     this.channelCount = 4;
+    /** Colour mode of the pixels held in memory — see {@link ColorMode}. */
+    this.colorMode = ColorMode.rgb;
+    /** Bits per channel of the pixels held in memory. */
+    this.bitDepth = 8;
     this.indexedColorTable = null;
     this.dpi = 72;
     this.xmpMetadata = {};

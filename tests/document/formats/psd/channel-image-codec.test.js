@@ -53,13 +53,16 @@ describe("document/formats/psd/channel-image-codec.js", () => {
       return bytes;
     }
 
-    it("scales float samples into the byte range the compositor uses", () => {
+    // The samples carry linear light, so they take the sRGB transfer curve on
+    // the way to bytes. Scaling them straight across renders linear 0.5 as 127
+    // rather than 188, which is what made a 32-bit PSD open badly darkened.
+    it("sRGB-encodes float samples into the byte range the compositor uses", () => {
       const samples = [0, 0.5, 1, 213 / 255];
       const decoded = ChannelImageCodec.decompressChannel(
         false, 32, rawFloatChannel(samples), samples.length, 1, 0, 0, samples.length * 4,
       );
       // `allocBuffer` aligns to four, so read the samples the callers read.
-      assert.deepEqual([...decoded.subarray(0, samples.length)], [0, 128, 255, 213]);
+      assert.deepEqual([...decoded.subarray(0, samples.length)], [0, 188, 255, 236]);
       assert.ok(decoded.length < samples.length * 4, "still one byte per sample, not per input byte");
     });
 
@@ -93,7 +96,39 @@ describe("document/formats/psd/channel-image-codec.js", () => {
       const decoded = ChannelImageCodec.decompressChannel(
         false, 32, zipFramed, width, 1, 0, 3, zipFramed.length,
       );
-      assert.deepEqual([...decoded.subarray(0, width)], [64, 128, 191]);
+      assert.deepEqual([...decoded.subarray(0, width)], [137, 188, 225]);
+    });
+  });
+
+  // 16-bit samples span the full 0..65535 range, confirmed against a real
+  // 16-bit PSD. Keeping the high byte divides by 256 and truncates, which sits
+  // a level dark through the midtones; the exact scale is 65535 / 255 = 257.
+  describe("16-bit channels", () => {
+    /** `values` as the big-endian 16-bit samples of a raw channel. */
+    function rawShortChannel(values) {
+      const bytes = new Uint8Array(values.length * 2);
+      values.forEach((value, i) => {
+        bytes[i * 2] = value >>> 8;
+        bytes[i * 2 + 1] = value & 255;
+      });
+      return bytes;
+    }
+
+    it("scales samples by 257 rather than truncating to the high byte", () => {
+      const samples = [0, 32768, 65535, 511];
+      const decoded = ChannelImageCodec.decompressChannel(
+        false, 16, rawShortChannel(samples), samples.length, 1, 0, 0, samples.length * 2,
+      );
+      // 511 is the telling one: the high byte reads 1, the true value is 2.
+      assert.deepEqual([...decoded.subarray(0, samples.length)], [0, 128, 255, 2]);
+    });
+
+    it("keeps black and white exact across the range", () => {
+      const samples = [0, 65535];
+      const decoded = ChannelImageCodec.decompressChannel(
+        false, 16, rawShortChannel(samples), samples.length, 1, 0, 0, samples.length * 2,
+      );
+      assert.deepEqual([...decoded.subarray(0, samples.length)], [0, 255]);
     });
   });
 });

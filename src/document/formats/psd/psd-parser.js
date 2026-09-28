@@ -14,7 +14,7 @@ import {
   writeSliceBoundsToDescriptor,
 } from "./slice-descriptor.js";
 import { TrackerRegistry } from "../../../features/trackers/tracker-registry.js";
-import { Document } from "../../model/document.js";
+import { ColorMode, Document } from "../../model/document.js";
 import { Layer, LayerSectionType } from "../../model/layer.js";
 import { XMPData } from "../metadata/xmp-metadata.js";
 import { LayerEffectDefs } from "./effect-defs.js";
@@ -945,6 +945,10 @@ function hydrateDocumentAfterPsdRead(doc) {
   ensureBackgroundLayer(doc);
   applyImageResourcesToDocument(doc);
   delete doc.isPSB;
+  // Reading the file needs the header's own mode and depth, but everything it
+  // produced is 8-bit RGBA, so the document reports what it actually holds.
+  doc.colorMode = ColorMode.rgb;
+  doc.bitDepth = 8;
   const textDocModel = resolveTextDocumentModel(doc);
   finalizeLayersAfterPsdRead(doc, textDocModel);
   TrackerRegistry.LayerCompTracker.offsetAllCompOrigins(doc, true);

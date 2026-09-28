@@ -7,6 +7,14 @@
     "autoColour": "Auto Color",
     "replaceColour": "Replace Color"
   },
+  "imageMode": {
+    "greyscale": "Grayscale",
+    "indexedColour": "Indexed Color",
+    "rgbColour": "RGB Color",
+    "cmykColour": "CMYK Color",
+    "labColour": "Lab Color",
+    "colourTable": "Color Table..."
+  },
   "layer": {
     "rasterise": "Rasterize",
     "rasteriseLayerStyle": "Rasterize Layer Style",

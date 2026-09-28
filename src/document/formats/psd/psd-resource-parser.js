@@ -50,6 +50,7 @@ const WRITE_UNPADDED_TAGS = new Set(["Txt2", "artd", "extd", "pths"]);
 /** Tags whose read payload size may be padded to a four-byte boundary. */
 const READ_PAD_EXEMPT_TAGS = new Set([
   "Lr16",
+  "Lr32",
   "LMsk",
   "Txt2",
   "artd",
@@ -816,13 +817,15 @@ const READ_LAYER_TAG_HANDLERS = {
   "Lr32": readLayerTag_Lr16,
 };
 
+/**
+ * @returns {boolean} Whether a handler read the block. Blocks we have no handler
+ * for are stepped over by the caller using the size the file states.
+ */
 function readLayerInfoTag(ctx) {
   const handler = READ_LAYER_TAG_HANDLERS[ctx.tag];
-  if (handler) {
-    handler(ctx);
-    return;
-  }
-
+  if (handler == null) return false;
+  handler(ctx);
+  return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -1630,9 +1633,13 @@ function parseAdditionalLayerInfo(data, pos, endPos, targetAdd, isPSB, context) 
       continue;
     }
     const readCtx = { data, pos, chunkSize, targetAdd, isPSB, context, tag };
-    readLayerInfoTag(readCtx);
+    const wasRead = readLayerInfoTag(readCtx);
     chunkSize = readCtx.chunkSize;
-    if (!READ_PAD_EXEMPT_TAGS.has(tag) && chunkSize % 4 !== 0) {
+    // An unaligned size is worth reporting only for a block we actually read,
+    // where it means the handler and the file disagree about the payload. Every
+    // Photoshop release brings blocks we have no handler for — "CAI ", "OCIO" —
+    // and their sizes are none of our business.
+    if (wasRead && !READ_PAD_EXEMPT_TAGS.has(tag) && chunkSize % 4 !== 0) {
       console.log("size not multiple of 4!!!", tag);
     }
     if (tag !== "luni" && tag !== "TySh" && tag !== "tySh" && tag !== "lfx2") {
