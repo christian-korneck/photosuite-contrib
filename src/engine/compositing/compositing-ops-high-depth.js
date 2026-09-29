@@ -29,6 +29,27 @@ import { bitDepthOfBuffer } from "./pixel-depth.js";
 const SAMPLE_CEILING = { 8: 255, 16: 65535 };
 
 /**
+ * Blend functions replaced at 32-bit.
+ *
+ * Most of the shared functions are already meaningful past white — multiply,
+ * darken, lighten and difference all carry straight over — and the ones built
+ * on inverse-multiply or a division by `1 - x` (screen, colour dodge, colour
+ * burn) are only defined on 0..1, so they keep whatever bound they have rather
+ * than producing nonsense. Linear dodge is the one that is plain addition and
+ * *is* capped: `min(1, a + b)`, because the 8-bit path packs its result into a
+ * byte lane. In float there is no such lane, and capping is exactly what stops
+ * two bright sources accumulating into a highlight.
+ *
+ * Only 32-bit gets these. A 16-bit sample cannot exceed 1.0 in the first place,
+ * so clamping there is correct rather than lossy.
+ */
+const HDR_BLEND_FUNCTIONS = {
+  "lddg": function linearDodgeHdr(srcCh, dstCh, blendWeight) {
+    return srcCh * blendWeight + dstCh;
+  },
+};
+
+/**
  * How samples at `bitDepth` map to and from the normalised 0..1 the blend
  * functions work in.
  * @returns {{ toUnit: number, fromUnit: number, ceiling: number }} `ceiling` is
@@ -83,7 +104,7 @@ export function compositeHighDepth(
     isStyleLayer = false;
   }
 
-  const blendFn = BLEND_FUNCTIONS[mode + "F"];
+  const blendFn = (destDepth === 32 ? HDR_BLEND_FUNCTIONS[mode] : null) || BLEND_FUNCTIONS[mode + "F"];
   if (blendFn == null) return;
   const region = intersectRegion(sourceRect, destRect, clipRect);
   if (region.width <= 0 || region.height <= 0) return;

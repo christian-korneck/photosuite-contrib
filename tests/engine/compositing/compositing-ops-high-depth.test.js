@@ -120,14 +120,12 @@ describe("engine/compositing/compositing-ops-high-depth.js", () => {
       assert.equal(dst[3], 1);
     });
 
-    // Known limit, and the boundary of what this step covers: the pipeline
-    // carries values above white, but the blend functions are shared with the
-    // 8-bit path and several clamp internally — `lddgF` is `min(1, a + b)`.
-    // They cannot simply stop clamping, because the 8-bit path packs results
-    // with `<< 16` and an unclamped value would spill into the next channel.
-    // Depth-aware blend variants are the next step; until then, modes that
-    // clamp still clamp at 32-bit.
-    it("still clamps in blend modes whose function clamps internally", () => {
+    // The blend functions are shared with the 8-bit path and several clamp
+    // internally — `lddgF` is `min(1, a + b)`. They cannot simply stop
+    // clamping, because the 8-bit path packs results with `<< 16` and an
+    // unclamped value would spill into the next channel. So 32-bit needs its
+    // own variants of the modes whose maths is meaningful past white.
+    it("adds light above white when linear-dodging two bright sources", () => {
       const rect = new Rect(0, 0, 1, 1);
       const src = allocPixelBuffer(1, 32);
       src[0] = 2; src[1] = 2; src[2] = 2; src[3] = 1;
@@ -136,7 +134,46 @@ describe("engine/compositing/compositing-ops-high-depth.js", () => {
 
       compositeHighDepth("lddg", src, rect, dst, rect, rect, 1, null);
 
-      assert.equal(dst[0], 1, "linear dodge saturates at white for now");
+      // Linear dodge is addition; at 8-bit this would have saturated at white.
+      assert.ok(dst[0] > 4.9 && dst[0] < 5.1, `linear dodge gave ${dst[0]}, expected ~5`);
+    });
+
+    it("keeps multiply, darken, lighten and difference meaningful past white", () => {
+      const rect = new Rect(0, 0, 1, 1);
+      const cases = [
+        ["mul ", 2, 3, 6],
+        ["lite", 2, 3, 3],
+        ["dark", 2, 3, 2],
+        ["diff", 2, 3, 1],
+      ];
+      for (const [mode, srcValue, dstValue, expected] of cases) {
+        const src = allocPixelBuffer(1, 32);
+        src[0] = srcValue; src[3] = 1;
+        const dst = allocPixelBuffer(1, 32);
+        dst[0] = dstValue; dst[3] = 1;
+
+        compositeHighDepth(mode, src, rect, dst, rect, rect, 1, null);
+
+        assert.ok(
+          Math.abs(dst[0] - expected) < 0.05,
+          `${mode.trim()} of ${srcValue} over ${dstValue} gave ${dst[0]}, expected ${expected}`,
+        );
+      }
+    });
+
+    // Screen is defined by inverse-multiply and colour dodge divides by 1-x;
+    // neither means anything once inputs pass 1.0, so those deliberately keep
+    // clamping rather than producing nonsense.
+    it("still bounds the modes whose maths is only defined on 0..1", () => {
+      const rect = new Rect(0, 0, 1, 1);
+      const src = allocPixelBuffer(1, 32);
+      src[0] = 2; src[3] = 1;
+      const dst = allocPixelBuffer(1, 32);
+      dst[0] = 3; dst[3] = 1;
+
+      compositeHighDepth("scrn", src, rect, dst, rect, rect, 1, null);
+
+      assert.ok(dst[0] <= 1.001, `screen gave ${dst[0]}, expected it to stay bounded`);
     });
 
     it("still clamps alpha, which is coverage rather than light", () => {
