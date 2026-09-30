@@ -310,9 +310,75 @@ describe("engine/layer-system.js", () => {
       assert.equal(ls.textureMemoryCount - before, 10 * 10 * 16, "four float samples per pixel");
     });
 
+    // `copyTexImage2D` allocates as well as copies, and accepts only a
+    // restricted set of internal formats — a sized float one is not among them.
+    // Using it on a float texture corrupts the blend destination, which shows
+    // up as garbage exactly where one layer blends over another.
+    // `copyTexImage2D` allocates as well as copies, and accepts only a
+    // restricted set of internal formats — a sized float one is not among them.
+    it("clones a float texture by copying into it, not by re-allocating", () => {
+      const { ls } = recordingLayerSystem(["EXT_color_buffer_float"]);
+      const calls = { copyTexImage2D: 0, copyTexSubImage2D: 0 };
+      ls.renderCtx.copyTexImage2D = () => { calls.copyTexImage2D++; };
+      ls.renderCtx.copyTexSubImage2D = () => { calls.copyTexSubImage2D++; };
+
+      new ls.RgbaTexture(4, 4, false, 32).clone();
+
+      assert.equal(calls.copyTexImage2D, 0, "never re-allocates a float format");
+      assert.equal(calls.copyTexSubImage2D, 1);
+    });
+
+    it("still clones 8-bit with the allocating copy, as it always did", () => {
+      const { ls } = recordingLayerSystem(["EXT_color_buffer_float"]);
+      let allocatingCopies = 0;
+      ls.renderCtx.copyTexImage2D = () => { allocatingCopies++; };
+      ls.renderCtx.copyTexSubImage2D = () => {};
+
+      new ls.RgbaTexture(4, 4).clone();
+
+      assert.equal(allocatingCopies, 1);
+    });
+
+    // A caller holding bytes for a float texture must not have to convert its
+    // whole buffer per draw — a brush dab should cost a dab. So the texture
+    // conforms what it is given, and only for the region it uploads.
+    it("conforms a byte buffer to its own format on upload", () => {
+      const { ls, calls } = recordingLayerSystem(["EXT_color_buffer_float"]);
+      const floatTexture = new ls.RgbaTexture(2, 2, false, 32);
+      calls.texImage2D.length = 0;
+
+      floatTexture.set(new Uint8Array(16));
+
+      const uploaded = calls.texImage2D[0][8];
+      assert.ok(uploaded instanceof Float32Array, `uploaded a ${uploaded.constructor.name}`);
+    });
+
+    it("stages and converts only the dirty region, not the whole surface", () => {
+      const { ls, calls } = recordingLayerSystem(["EXT_color_buffer_float"]);
+      calls.texSubImage2D = [];
+      ls.renderCtx.texSubImage2D = (...args) => { calls.texSubImage2D.push(args); };
+      const floatTexture = new ls.RgbaTexture(100, 100, false, 32);
+      calls.texImage2D.length = 0;
+
+      floatTexture.set(new Uint8Array(100 * 100 * 4), new Rect(0, 0, 2, 2));
+
+      assert.equal(calls.texImage2D.length, 0, "a small dab does not re-upload the surface");
+      const staged = calls.texSubImage2D[0][8];
+      assert.ok(staged instanceof Float32Array, "staged region is converted");
+      assert.equal(staged.length, 2 * 2 * 4, "and is only the dirty region");
+    });
+
+    it("leaves a buffer already at its own depth alone", () => {
+      const { ls } = recordingLayerSystem(["EXT_color_buffer_float"]);
+      const floatTexture = new ls.RgbaTexture(2, 2, false, 32);
+      const alreadyFloat = new Float32Array(16);
+      assert.equal(floatTexture.conformPixels(alreadyFloat), alreadyFloat, "no needless copy");
+    });
+
     it("clones a texture at its own depth rather than dropping to 8-bit", () => {
       const { ls } = recordingLayerSystem(["EXT_color_buffer_float"]);
       ls.renderCtx.copyTexImage2D = () => {};
+      ls.renderCtx.copyTexSubImage2D = () => {};
       const clone = new ls.RgbaTexture(4, 4, false, 32).clone();
       assert.equal(clone.bitDepth, 32);
     });
@@ -363,6 +429,49 @@ describe("engine/layer-system.js", () => {
 
       assert.equal(mediumAgain, mediumFirst, "same precision reuses the program");
       assert.notEqual(high, mediumFirst, "a highp document gets its own program");
+      assert.equal(built, 2);
+    });
+  });
+
+  // The CPU compositor gives linear dodge a 32-bit variant that does not cap at
+  // white; the shaders have to agree, or the same document blends differently
+  // depending on which path runs.
+  describe("unbounded blending at 32-bit", () => {
+    it("caps linear dodge at white for the bounded depths", () => {
+      const ls = createLayerSystem();
+      assert.match(ls.renderers.blendShaderBodyFor("lddg", false), /min\(ONE3/);
+      assert.match(ls.renderers.blendShaderBodyFor("lddg", 8), /min\(ONE3/);
+    });
+
+    it("drops the cap for a 32-bit document, so highlights accumulate", () => {
+      const ls = createLayerSystem();
+      const body = ls.renderers.blendShaderBodyFor("lddg", true);
+      assert.equal(body.indexOf("min(ONE3"), -1, "no ceiling on an unbounded blend");
+      assert.match(body, /a\s*\+\s*b/, "still an addition");
+    });
+
+    it("leaves the modes that are only defined on 0..1 alone", () => {
+      const ls = createLayerSystem();
+      // Screen is inverse-multiply; unbounding it produces nonsense, not range.
+      assert.equal(
+        ls.renderers.blendShaderBodyFor("scrn", true),
+        ls.renderers.blendShaderBodyFor("scrn", false),
+      );
+    });
+
+    it("keys the shader cache on it, so the two variants cannot collide", () => {
+      const ls = createLayerSystem();
+      ls.renderers.singletonShaderCache = {};
+      let built = 0;
+      const build = () => ({ id: ++built });
+
+      ls.unboundedBlending = false;
+      const bounded = ls.renderers.getCachedShader("blend", build);
+      ls.unboundedBlending = true;
+      const unbounded = ls.renderers.getCachedShader("blend", build);
+      ls.unboundedBlending = false;
+
+      assert.notEqual(unbounded, bounded);
       assert.equal(built, 2);
     });
   });

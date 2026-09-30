@@ -5,7 +5,7 @@
 
 import { Rect } from '../core/math/rect.js';
 import { allocBuffer, planarToInterleaved } from "./compositing/buffer-utils.js";
-import { bytesPerPixel } from "./compositing/pixel-depth.js";
+import { allocPixelBuffer, bitDepthOfBuffer, bytesPerPixel, convertPixelBuffer, copyPixelRegion } from "./compositing/pixel-depth.js";
 import { copyPixels } from "./compositing/pixel-ops.js";
 import { transposeColorMatrix } from "./compositing/color-matrix.js";
 
@@ -375,21 +375,26 @@ function installTextures(LayerSystem) {
     gl.bindTexture(gl.TEXTURE_2D, this.glTexture);
     if (pixelData == null || ArrayBuffer.isView(pixelData)) {
       const pixelCount = this.width * this.height;
-      // The staging path packs a sub-rect through `copyPixels`, which works in
-      // bytes; above 8-bit the whole surface goes up instead. Uploading more
-      // than asked is only slower, whereas packing wider samples as bytes would
-      // be wrong.
-      const uploadWholeSurface = subRect == null
-        || this.bitDepth !== 8
-        || subRect.area() * 10 > pixelCount;
-      if (uploadWholeSurface) {
-        gl.texImage2D(gl.TEXTURE_2D, 0, format.internalFormat, this.width, this.height, 0, format.format, format.type, pixelData);
+      const surfaceRect = new Rect(0, 0, this.width, this.height);
+      if (subRect == null || subRect.area() * 10 > pixelCount) {
+        // Conforming here rather than at the call site keeps the cost
+        // proportional to what is actually uploaded: a caller holding bytes for
+        // a float texture would otherwise convert its whole buffer per draw.
+        gl.texImage2D(gl.TEXTURE_2D, 0, format.internalFormat, this.width, this.height, 0, format.format, format.type, this.conformPixels(pixelData));
       } else {
-        const staging = allocBuffer(subRect.area() * 4);
-        copyPixels(pixelData, new Rect(0, 0, this.width, this.height), staging, subRect);
-        gl.texSubImage2D(gl.TEXTURE_2D, 0, subRect.x, subRect.y, subRect.width, subRect.height, format.format, format.type, staging)
+        // Only the dirty region is staged, converted and sent — a brush dab
+        // must not cost a whole-surface convert and upload.
+        const copyRegion = this.bitDepth === 8 ? copyPixels : copyPixelRegion;
+        const staging = allocPixelBuffer(subRect.area(), bitDepthOfBuffer(pixelData));
+        copyRegion(pixelData, surfaceRect, staging, subRect);
+        gl.texSubImage2D(gl.TEXTURE_2D, 0, subRect.x, subRect.y, subRect.width, subRect.height, format.format, format.type, this.conformPixels(staging))
       }
     } else gl.texImage2D(gl.TEXTURE_2D, 0, format.internalFormat, format.format, format.type, pixelData)
+  };
+  /** `pixelData` at this texture's depth, converting only if it is not already. */
+  LayerSystem.RgbaTexture.prototype.conformPixels = function(pixelData) {
+    if (pixelData == null || bitDepthOfBuffer(pixelData) === this.bitDepth) return pixelData;
+    return convertPixelBuffer(pixelData, this.bitDepth)
   };
   LayerSystem.RgbaTexture.prototype.get = function(outBuffer) {
     let gl = LayerSystem.renderCtx;
@@ -411,7 +416,17 @@ function installTextures(LayerSystem) {
       const copyX = Math.max(backupRect.x, 0);
       const copyY = Math.max(backupRect.y, 0);
       gl.copyTexSubImage2D(gl.TEXTURE_2D, 0, copyX, copyY, copyX, copyY, backupRect.width, backupRect.height)
-    } else gl.copyTexImage2D(gl.TEXTURE_2D, 0, this.format.internalFormat, 0, 0, this.width, this.height, 0)
+    } else if (this.bitDepth === 8) {
+      gl.copyTexImage2D(gl.TEXTURE_2D, 0, this.format.internalFormat, 0, 0, this.width, this.height, 0)
+    } else {
+      // `copyTexImage2D` both allocates and copies, and it accepts only a
+      // restricted set of internal formats — a sized float one is not among
+      // them. `initGlTexture` has already allocated this texture at the right
+      // format, so copying into it is the supported route. Getting this wrong
+      // corrupts the blend destination, which shows up as garbage exactly where
+      // one layer blends over another.
+      gl.copyTexSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 0, 0, this.width, this.height)
+    }
   };
   LayerSystem.RgbaTexture.prototype.initGlTexture = function(glTexture, width, height) {
     let gl = LayerSystem.renderCtx;
@@ -445,7 +460,13 @@ function installTextures(LayerSystem) {
     const cloneTex = new LayerSystem.RgbaTexture(this.width, this.height, this.useLinearFilter, this.bitDepth);
     LayerSystem.bindRenderTarget(this);
     gl.bindTexture(gl.TEXTURE_2D, cloneTex.glTexture);
-    gl.copyTexImage2D(gl.TEXTURE_2D, 0, this.format.internalFormat, 0, 0, this.width, this.height, 0);
+    // Same restriction as `saveBackup`: a sized float format cannot be the
+    // target of `copyTexImage2D`, and the clone is already allocated.
+    if (this.bitDepth === 8) {
+      gl.copyTexImage2D(gl.TEXTURE_2D, 0, this.format.internalFormat, 0, 0, this.width, this.height, 0);
+    } else {
+      gl.copyTexSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 0, 0, this.width, this.height);
+    }
     return cloneTex
   };
 }
@@ -748,7 +769,9 @@ function installBlendRenderers(LayerSystem) {
    */
   LayerSystem.renderers.singletonShaderCache = {};
   LayerSystem.renderers.getCachedShader = function(cacheKey, build) {
-    const key = cacheKey + "|" + LayerSystem.shaderPrecision;
+    // Precision alone is not enough to tell the variants apart: 16- and 32-bit
+    // both compile at highp, but only 32-bit blends unbounded.
+    const key = cacheKey + "|" + LayerSystem.shaderPrecision + "|" + (LayerSystem.unboundedBlending ? "hdr" : "sdr");
     const cache = LayerSystem.renderers.singletonShaderCache;
     if (cache[key] == null) cache[key] = build();
     return cache[key];
@@ -761,7 +784,8 @@ function installBlendRenderers(LayerSystem) {
       shapeStyleParams.fill = 1;
       shapeStyleParams.style = false
     }
-    const cacheKey = blendMode + (shapeStyleParams.blendIfTable ? "1" : "") + "|" + LayerSystem.shaderPrecision;
+    const cacheKey = blendMode + (shapeStyleParams.blendIfTable ? "1" : "")
+      + "|" + LayerSystem.shaderPrecision + "|" + (LayerSystem.unboundedBlending ? "hdr" : "sdr");
     if (LayerSystem.renderers.shaderCache[cacheKey] == null) LayerSystem.renderers.shaderCache[cacheKey] = new LayerSystem.renderers.BlendShader(blendMode, shapeStyleParams.blendIfTable != null);
     const blendShader = LayerSystem.renderers.shaderCache[cacheKey];
     const drawRect = srcRect.intersect(dstRect).intersect(clipRect);
@@ -836,10 +860,37 @@ function installBlendRenderers(LayerSystem) {
     colr: "return  setLum( a, lum(b) ); ",
     "lum ": "return  setLum( b, lum(a) ); "
   };
+  /**
+   * Blend bodies replaced when the document is unbounded (32-bit only).
+   *
+   * Mirrors `HDR_BLEND_FUNCTIONS` in `compositing-ops-high-depth.js`; the two
+   * have to agree or a document blends differently on GPU and CPU. Linear dodge
+   * is the only one: it is plain addition capped at white purely because the
+   * 8-bit path has nowhere to put the overflow, and that cap is what stops two
+   * bright sources accumulating into a highlight.
+   */
+  LayerSystem.renderers.unboundedBlendShaderBodies = {
+    lddg: "a*=f;  return a+b;",
+  };
+
+  /**
+   * The GLSL body for `blendMode`. `unbounded` selects the 32-bit variant where
+   * one exists; every other mode is returned unchanged, including the ones
+   * built on inverse-multiply or a division by `1 - x`, which have no meaning
+   * above white.
+   */
+  LayerSystem.renderers.blendShaderBodyFor = function(blendMode, unbounded) {
+    if (unbounded === true) {
+      const unboundedBody = LayerSystem.renderers.unboundedBlendShaderBodies[blendMode];
+      if (unboundedBody != null) return unboundedBody;
+    }
+    const body = LayerSystem.renderers.blendShaderBodies[blendMode];
+    return body == null ? LayerSystem.renderers.blendShaderBodies.norm : body;
+  };
+
   LayerSystem.renderers.BlendShader = function(blendMode, hasBlendIf) {
     LayerSystem.ShaderProgram.call(this);
-    let GuBlendBody = LayerSystem.renderers.blendShaderBodies[blendMode];
-    if (GuBlendBody == null) GuBlendBody = LayerSystem.renderers.blendShaderBodies.norm;
+    const GuBlendBody = LayerSystem.renderers.blendShaderBodyFor(blendMode, LayerSystem.unboundedBlending);
     let fragSrc = "\t\t\tprecision mediump float;\t\t\t" + LayerSystem.shaderLib.vec3Constants + "\t\t\t\t\t\tuniform sampler2D source;\t\t\tuniform sampler2D target;\t\t\tuniform float alpha;\t\t\tuniform float fill;\t\t\tuniform float style;\t\t\tuniform float keepBGA;\t\t\t" + (hasBlendIf ? "uniform vec4 blIf[10];" : "") + "\t\t\t\t\t\tvarying vec2 tCoord;\t\t\tvarying vec2 sCoord;\t\t\t\t\t\t\t\t\t" + LayerSystem.shaderLib.satFn + "\t\t\t" + LayerSystem.shaderLib.lumFn + "\t\t\t" + LayerSystem.shaderLib.dTrfn + "\t\t\t" + LayerSystem.shaderLib.colorBurnBlend + "\t\t\t" + LayerSystem.shaderLib.colorDodgeBlend + "\t\t\t" + LayerSystem.shaderLib.midSatFn + "\t\t\t" + LayerSystem.shaderLib.setSatFn + "\t\t\t" + LayerSystem.shaderLib.clipColFn + "\t\t\t" + LayerSystem.shaderLib.setLumFn + "\t\t\t" + LayerSystem.shaderLib.hashFn + "\t\t\t" + (hasBlendIf ? LayerSystem.shaderLib.blendIfFn : "") + "\t\t\t\t\t\tvec3  BB(vec3  a, vec3  b, float f) { " + GuBlendBody + " } \t\t\t\t\t\tvoid main(void) {\t\t\t\tvec4 tgt = texture2D(target, tCoord);\t\t\t\tvec4 src = texture2D(source, sCoord);";
     const vertSrc = "\t\t\tattribute vec2 verPos;\t\t\tuniform vec4 srct;\t\t\tvarying vec2 tCoord;\t\t\tvarying vec2 sCoord;\t\t\tvoid main(void) {\t\t\t\ttCoord = verPos;\t\t\t\tsCoord = (verPos-srct.xy)/srct.zw;\t\t\t\tgl_Position = vec4(vec2(-1.0,-1.0) + 2.0*verPos, 0.0, 1.0);\t\t\t}";
     if (blendMode == "diss") fragSrc += "\t\t\t\t\tgl_FragColor = (hash(tCoord) >= (keepBGA + (1.0-keepBGA)*src.w)*alpha ? tgt : vec4(src.xyz, keepBGA*tgt.w + (1.0-keepBGA)));  }";
@@ -952,6 +1003,11 @@ export const LayerSystem = {
    * depth via `precisionForBitDepth`; 8-bit leaves it at `mediump`.
    */
   shaderPrecision: "mediump",
+  /**
+   * Whether blends may exceed white. True only for a 32-bit document — a 16-bit
+   * sample cannot pass 1.0, so bounding it there is correct.
+   */
+  unboundedBlending: false,
   /** Replaced by {@link detectGlCapabilities} once a context exists. */
   glCapabilities: {
     webgl2: false,

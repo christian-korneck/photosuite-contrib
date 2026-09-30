@@ -65,6 +65,7 @@ function createTextureManager() {
     setBitDepth(bitDepth) {
       this.bitDepth = bitDepth;
       LayerSystem.shaderPrecision = LayerSystem.precisionForBitDepth(bitDepth);
+      LayerSystem.unboundedBlending = bitDepth === 32;
     },
 
     delete(existingTarget) {

@@ -20,6 +20,7 @@ import { makeElement } from "../../core/dom.js";
 import { unpackDoublesList } from "../formats/psd/descriptor-codec.js";
 import { rasterizeWithMatrix } from "../render/raster-transform.js";
 import { allocBuffer, copyBuffer, equals, extractChannel, extractChannelByte, fillBuffer } from "../../engine/compositing/buffer-utils.js";
+import { bitDepthOfBuffer, convertPixelBuffer } from "../../engine/compositing/pixel-depth.js";
 import { contentBoundsChannel, copyChannel, copyChannelToAlpha, copyPixels, extendRgbaBuffer, getWhiteBuffer, getZeroBuffer, scaleBuffer, scaleRgbaAlphaByMask, trimRgbaToContent } from "../../engine/compositing/pixel-ops.js";
 import { boundsFromCoordPairs } from "../../engine/compositing/anti-alias.js";
 import { composeHomographies, cornersToHomography } from "../../engine/compositing/homography.js";
@@ -30,6 +31,16 @@ import { composite, compositeDissolvedDitheredClipped, compositeLayer } from "..
 import { invert } from "../../engine/compositing/color-math.js";
 import { psdColorToRgb } from "../../engine/compositing/psd-color-utils.js";
 import { getWarpControlPoints, isIdentityWarp } from "../../engine/compositing/warp.js";
+
+/**
+ * `buffer` as 8-bit samples, converting only if it is not already.
+ *
+ * The selection and pixel-cache helpers are byte-oriented throughout; this is
+ * the boundary where a wider layer narrows to meet them.
+ */
+function conformBufferToBytes(buffer) {
+  return buffer != null && bitDepthOfBuffer(buffer) !== 8 ? convertPixelBuffer(buffer, 8) : buffer;
+}
 
 const LayerSectionType = {
   Normal: 0,
@@ -273,6 +284,12 @@ export class Layer {
     // A texture built for another depth cannot be reused: it would take the
     // wider samples as bytes.
     var layerBitDepth = doc != null && doc.bitDepth != null ? doc.bitDepth : 8;
+    // Anything made after the document changed depth — a paste, a new layer —
+    // still holds bytes. `RgbaTexture.set` conforms them to its own format, and
+    // does it per uploaded region, so a brush dab costs a dab rather than a
+    // whole-surface convert. The layer keeps its bytes either way: this buffer
+    // is shared with code that moves pixels a word at a time through a
+    // `Uint32Array` view, which reads four floats as one packed pixel.
     if (LayerSystem.webglEnabled != this.renderCache.webglEnabled || this.renderCache.layerTexture == null || this.renderCache.layerTexture.width != textureRect.width || this.renderCache.layerTexture.height != textureRect.height || this.renderCache.layerTexture.bitDepth != layerBitDepth) {
       if (this.renderCache.layerTexture) this.renderCache.layerTexture.delete();
       this.renderCache.layerTexture = new LayerSystem.RgbaTexture(textureRect.width, textureRect.height, false, layerBitDepth);
@@ -592,8 +609,14 @@ export class Layer {
   computeSelectionPixels(doc, selection, preserveLayerBuffer) {
   var selectionMask, selectionPixels, layerBufferBackup, selectionRect, layerRect, channelBackup, rectBackup;
   if (this.pixelContent <= 0) {
+    // Everything below works in packed bytes — word-at-a-time copies, byte
+    // channel extraction, byte compositing. Handing those float samples reads
+    // four floats as one pixel and turns alpha 1.0 into byte 1, which is what
+    // made a copied selection come back as a near-invisible white smear. So
+    // copy and cut run at 8-bit; the range above white does not survive them.
+    var sourceBuffer = conformBufferToBytes(this.buffer);
     var alphaChannel = allocBuffer(this.rect.area());
-    extractChannelByte(this.buffer, alphaChannel, 3);
+    extractChannelByte(sourceBuffer, alphaChannel, 3);
     selectionMask = applyChannelOp(selection, {
       channel: alphaChannel,
       rect: this.rect
@@ -603,15 +626,15 @@ export class Layer {
     selectionRect = selectionMask.rect.clone();
     layerRect = this.rect.clone();
     selectionPixels = allocBuffer(selectionRect.area() * 4);
-    copyPixels(this.buffer, layerRect, selectionPixels, selectionRect);
+    copyPixels(sourceBuffer, layerRect, selectionPixels, selectionRect);
     extractChannel(selectionMask.channel, selectionPixels, 3);
-    layerBufferBackup = this.buffer.slice(0);
+    layerBufferBackup = sourceBuffer.slice(0);
     if (!preserveLayerBuffer) {
       var invertedSelection = selection.channel.slice(0);
       invert(invertedSelection);
       scaleRgbaAlphaByMask(invertedSelection, selection.rect, layerBufferBackup, layerRect)
     }
-    channelBackup = this.buffer.slice(0);
+    channelBackup = sourceBuffer.slice(0);
     rectBackup = this.rect.clone()
   }
   if (this.pixelContent == 1 || this.pixelContent == 3) {
@@ -658,7 +681,8 @@ export class Layer {
   checkPixelCache(doc, selection) {
   if (this.pixelContent <= 0 && selection.rect.equals(this.rect)) {
     var layerAlpha = allocBuffer(this.rect.area());
-    extractChannelByte(this.buffer, layerAlpha, 3);
+    // Compared against byte caches below, so read at the same depth they are.
+    extractChannelByte(conformBufferToBytes(this.buffer), layerAlpha, 3);
     if (equals(doc.selectionMask.channel, layerAlpha)) {
       var layerRect = this.rect,
         layerBuffer = this.buffer;
