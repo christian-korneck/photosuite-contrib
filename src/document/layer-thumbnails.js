@@ -4,6 +4,7 @@
  */
 
 import { Rect } from '../core/math/rect.js';
+import { bitDepthOfBuffer, convertColorSample, rescaleAlpha } from "../engine/compositing/pixel-depth.js";
 import { Locale } from '../core/i18n/locale.js';
 import { LayerEffectDefs } from './formats/psd/effect-defs.js';
 import { findPattern } from './formats/psd/layer-data-parsers.js';
@@ -193,6 +194,13 @@ function drawVectorMaskThumbnail(ctx, cssWidth, cssHeight, docRect, vectorMask) 
 
 function drawRasterThumbnail(ctx, cssWidth, cssHeight, docRect, rgba, sampleRect, showDisabled, channelIndex) {
   ensureCanvasBackingStore(ctx, cssWidth, cssHeight);
+  // Alpha is read below as `x * (1/255)`, so a float alpha of 1.0 became
+  // 0.0039 and every preview drew as bare checkerboard. The narrowing is per
+  // sampled pixel, not over the whole buffer: a preview reads a few hundred
+  // points, and converting a full-size layer for each one froze the app
+  // outright — millions of transfer-curve evaluations per thumbnail, per
+  // redraw, per layer.
+  const sourceBitDepth = rgba != null ? bitDepthOfBuffer(rgba) : 8;
   cssWidth = Math.floor(cssWidth * getDevicePixelRatio());
   cssHeight = Math.floor(cssHeight * getDevicePixelRatio());
   if (cssWidth * cssHeight == 0) return;
@@ -223,10 +231,14 @@ function drawRasterThumbnail(ctx, cssWidth, cssHeight, docRect, rgba, sampleRect
         pixels[byteIdx + 3] = 255;
       } else {
         const rgbaIdx = (docY - sampleRect.y) * sampleRect.width + (docX - sampleRect.x) << 2;
-        const alpha = rgba[rgbaIdx + 3] * (1 / 255);
-        pixels[byteIdx] = rgba[rgbaIdx] * alpha + checker * (1 - alpha);
-        pixels[byteIdx + 1] = rgba[rgbaIdx + 1] * alpha + checker * (1 - alpha);
-        pixels[byteIdx + 2] = rgba[rgbaIdx + 2] * alpha + checker * (1 - alpha);
+        const sampleRed = sourceBitDepth === 8 ? rgba[rgbaIdx] : convertColorSample(rgba[rgbaIdx], sourceBitDepth, 8);
+        const sampleGreen = sourceBitDepth === 8 ? rgba[rgbaIdx + 1] : convertColorSample(rgba[rgbaIdx + 1], sourceBitDepth, 8);
+        const sampleBlue = sourceBitDepth === 8 ? rgba[rgbaIdx + 2] : convertColorSample(rgba[rgbaIdx + 2], sourceBitDepth, 8);
+        const sampleAlpha = sourceBitDepth === 8 ? rgba[rgbaIdx + 3] : rescaleAlpha(rgba[rgbaIdx + 3], sourceBitDepth, 8);
+        const alpha = sampleAlpha * (1 / 255);
+        pixels[byteIdx] = sampleRed * alpha + checker * (1 - alpha);
+        pixels[byteIdx + 1] = sampleGreen * alpha + checker * (1 - alpha);
+        pixels[byteIdx + 2] = sampleBlue * alpha + checker * (1 - alpha);
         pixels[byteIdx + 3] = 255;
       }
     }
