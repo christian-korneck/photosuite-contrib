@@ -19,6 +19,7 @@ import { AdjustmentEngine } from "../adjustments/adjustment-engine.js";
 import { FilterDefs } from "../filters/filter-apply.js";
 import { Layer, LayerSectionType } from "../../document/model/layer.js";
 import { Document} from "../../document/model/document.js";
+import { bitDepthOfBuffer, convertPixelBuffer } from "../../engine/compositing/pixel-depth.js";
 import { TextLayout } from "../text/text-layout.js";
 import { ActionDescUtil } from "../scripting/action-desc.js";
 import { LayerStyleRenderer } from "../layer-styles/style-renderer.js";
@@ -337,6 +338,13 @@ function historyLabelForNewLayer(event, eventCode) {
   return historyActionId;
 }
 
+/** Selection pixels, which `extractSelectionData` returns as bytes, at `doc`'s depth. */
+function selectionBufferAtDocumentDepth(buffer, doc) {
+  const documentBitDepth = doc.bitDepth == null ? 8 : doc.bitDepth;
+  if (buffer == null || bitDepthOfBuffer(buffer) === documentBitDepth) return buffer;
+  return convertPixelBuffer(buffer, documentBitDepth);
+}
+
 function applyNewLayerViaCopy(newLayer, doc) {
   const sourceLayer = doc.layers[doc.selectedLayerIndices[0]];
   const selectionPixels = sourceLayer.extractSelectionData(doc, doc.selectionMask);
@@ -345,7 +353,7 @@ function applyNewLayerViaCopy(newLayer, doc) {
     return false;
   }
   newLayer.rect = selectionPixels.rect;
-  newLayer.buffer = selectionPixels.pixBuf;
+  newLayer.buffer = selectionBufferAtDocumentDepth(selectionPixels.pixBuf, doc);
   newLayer.rasterize(doc);
   return true;
 }
@@ -364,11 +372,11 @@ function applyNewLayerViaCut(newLayer, doc) {
     return null;
   }
   newLayer.rect = selectionPixels.rect;
-  newLayer.buffer = selectionPixels.pixBuf;
+  newLayer.buffer = selectionBufferAtDocumentDepth(selectionPixels.pixBuf, doc);
   newLayer.rasterize(doc);
   const cutSourceLayer = sourceLayer.clone();
   cutSourceLayer.rect = selectionPixels.cutRect;
-  cutSourceLayer.buffer = selectionPixels.cutBuffer;
+  cutSourceLayer.buffer = selectionBufferAtDocumentDepth(selectionPixels.cutBuffer, doc);
   return cutSourceLayer;
 }
 
