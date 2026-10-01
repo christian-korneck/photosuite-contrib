@@ -34,6 +34,45 @@ before(async () => {
 });
 
 describe("ui/menu/menu-bar-filter-view-window-menus.js", () => {
+  // Filters read and write packed bytes, so running one against a 16- or
+  // 32-bit layer corrupts it. Photoshop restricts them by depth too.
+  describe("filters are offered only for an 8-bit document", () => {
+    /** Every row of the Filter menu, flattened through its submenus. */
+    function allFilterRows() {
+      const rows = [];
+      for (const item of buildFilterMenu().items) {
+        if (item.sub) rows.push(...item.sub);
+        else rows.push(item);
+      }
+      return rows;
+    }
+
+    it("enables them at 8-bit", () => {
+      const rows = allFilterRows();
+      assert.ok(rows.length > 10, "the menu has filters in it");
+      for (const row of rows) {
+        if (row.resolveRowState == null) continue;
+        assert.equal(row.resolveRowState({ bitDepth: 8 }).enabled, true, row.name);
+      }
+    });
+
+    it("disables every one of them at 16- and 32-bit", () => {
+      for (const bitDepth of [16, 32]) {
+        for (const row of allFilterRows()) {
+          if (row.resolveRowState == null) continue;
+          assert.equal(row.resolveRowState({ bitDepth }).enabled, false, `${row.name} at ${bitDepth}`);
+        }
+      }
+    });
+
+    it("keeps them disabled with no document open", () => {
+      for (const row of allFilterRows()) {
+        if (row.resolveRowState == null) continue;
+        assert.equal(row.resolveRowState(null).enabled, false, row.name);
+      }
+    });
+  });
+
   it("buildFilterMenu starts with lastFilter then FilterDefs groups", () => {
     const filterMenu = buildFilterMenu();
     assert.equal(filterMenu.name, "topMenu.filter");

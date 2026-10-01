@@ -13,6 +13,16 @@ export function menuWhenDocOpen(doc) {
   return { enabled: doc != null };
 }
 
+/**
+ * Document open and held at 8 bits per channel.
+ *
+ * Filters read and write packed bytes, so they would corrupt a wider layer
+ * rather than merely being imprecise.
+ */
+export function menuWhenEightBitDoc(doc) {
+  return { enabled: doc != null && (doc.bitDepth == null || doc.bitDepth === 8) };
+}
+
 /** Document open and at least one layer index selected. */
 export function menuWhenHasLayerSelection(doc) {
   return { enabled: doc != null && doc.selectedLayerIndices.length !== 0 };

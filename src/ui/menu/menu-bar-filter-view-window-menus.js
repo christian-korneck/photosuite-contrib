@@ -9,6 +9,7 @@ import { PopupTypes } from "../config/popup-types.js";
 import { EventType, UiCommand } from "../../core/event-bus.js";
 import {
   menuWhenDocOpen,
+  menuWhenEightBitDoc,
   menuWhenPanelVisible
 } from "./menu-bar-predicates.js";
 
@@ -31,7 +32,7 @@ function appendFilterMenuGroups(filterMenu) {
         name: FilterDefs.names[menuGroup.filterClassId],
         opensDialog: true,
         separatorAfter: menuGroup.separatorAfter,
-        resolveRowState: menuWhenDocOpen
+        resolveRowState: menuWhenEightBitDoc
       });
       filterMenu.menuActions.push({
         appEventType: EventType.documentAction,
@@ -45,7 +46,7 @@ function appendFilterMenuGroups(filterMenu) {
     }
     const submenuItem = {
       name: menuGroup.groupLabelKey,
-      resolveRowState: menuWhenDocOpen,
+      resolveRowState: menuWhenEightBitDoc,
       sub: []
     };
     filterMenu.items.push(submenuItem);
@@ -57,7 +58,7 @@ function appendFilterMenuGroups(filterMenu) {
       submenuItem.sub.push({
         name: FilterDefs.names[menuGroup.filterIds[filterIdx]],
         opensDialog: FilterDefs.create(menuGroup.filterIds[filterIdx]) != null,
-        resolveRowState: menuWhenDocOpen
+        resolveRowState: menuWhenEightBitDoc
       });
       submenuActions.sub.push({
         appEventType: EventType.documentAction,
@@ -86,7 +87,7 @@ export function buildFilterMenu() {
       name: "filters.menu.lastFilter",
       shortcut: [altMod, ctrlMod, keyboard.KeyF],
       separatorAfter: true,
-      resolveRowState: menuWhenDocOpen
+      resolveRowState: menuWhenEightBitDoc
     }],
     menuActions: [{
       appEventType: EventType.documentAction,
