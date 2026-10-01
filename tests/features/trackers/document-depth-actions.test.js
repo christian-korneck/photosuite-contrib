@@ -94,7 +94,7 @@ describe("features/trackers/document-depth-actions.js", () => {
     assert.equal(doc.history.length, 0, "a no-op does not clutter history");
   });
 
-  it("ignores a colour-mode row, which carries no target depth", () => {
+  it("ignores a colour mode with no conversion engine behind it", () => {
     const doc = fakeDocument([255, 128, 0, 255], 8);
 
     const tracker = new LayerEffectsTracker();
@@ -147,6 +147,58 @@ describe("features/trackers/document-depth-actions.js", () => {
 
       assert.equal(doc.needsComposite, true);
       assert.equal(doc.buffer, null);
+    });
+  });
+
+  // Greyscale replaces each layer's buffer rather than editing it, so the
+  // snapshot history holds stays intact and undo brings the colour back.
+  describe("colour mode", () => {
+    it("converts to greyscale and records a history step", () => {
+      const doc = fakeDocument([255, 0, 0, 255], 8);
+      doc.colorMode = 3;
+      doc.convertColorMode = function(mode) {
+        this.colorMode = mode;
+        this.layers[0].buffer = new Uint8Array([76, 76, 76, 255]);
+      };
+
+      const tracker = new LayerEffectsTracker();
+      LayerEffectsTracker.actionHandlers[CONVERT_MODE_ACTION].call(
+        tracker, { actionKind: CONVERT_MODE_ACTION, targetMode: 1 }, null, doc,
+      );
+
+      assert.equal(doc.colorMode, 1);
+      assert.equal(doc.history.length, 1);
+    });
+
+    it("undo restores both the colour mode and the original pixels", () => {
+      const doc = fakeDocument([255, 0, 0, 255], 8);
+      doc.colorMode = 3;
+      const originalBuffer = doc.layers[0].buffer;
+      doc.convertColorMode = function(mode) {
+        this.colorMode = mode;
+        this.layers[0].buffer = new Uint8Array([76, 76, 76, 255]);
+      };
+
+      const tracker = new LayerEffectsTracker();
+      LayerEffectsTracker.actionHandlers[CONVERT_MODE_ACTION].call(
+        tracker, { actionKind: CONVERT_MODE_ACTION, targetMode: 1 }, null, doc,
+      );
+      LayerEffectsTracker.undoHandlers[CONVERT_MODE_ACTION].call(tracker, doc.history[0].data, doc);
+
+      assert.equal(doc.colorMode, 3, "back to RGB");
+      assert.equal(doc.layers[0].buffer, originalBuffer, "the original pixels are back");
+    });
+
+    it("ignores a mode the document is already in", () => {
+      const doc = fakeDocument([255, 0, 0, 255], 8);
+      doc.colorMode = 3;
+
+      const tracker = new LayerEffectsTracker();
+      LayerEffectsTracker.actionHandlers[CONVERT_MODE_ACTION].call(
+        tracker, { actionKind: CONVERT_MODE_ACTION, targetMode: 3 }, null, doc,
+      );
+
+      assert.equal(doc.history.length, 0);
     });
   });
 

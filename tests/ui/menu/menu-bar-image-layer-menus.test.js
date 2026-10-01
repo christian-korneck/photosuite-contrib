@@ -86,7 +86,9 @@ describe("ui/menu/menu-bar-image-layer-menus.js", () => {
       const state = item.resolveRowState(rgbDoc);
       const isCurrent = item.name === "imageMode.rgbColour" || item.name === "imageMode.bitDepth8";
       assert.equal(state.checked === true, isCurrent, item.name);
-      assert.equal(state.enabled === true, isCurrent, item.name);
+      // Greyscale is the one colour mode with a conversion behind it.
+      const isConvertible = isCurrent || item.name === "imageMode.greyscale";
+      assert.equal(state.enabled === true, isConvertible, item.name);
     }
     // The palette editor is neither a mode nor a depth, so it never ticks.
     const colourTable = modeRow.sub.find((item) => item.name === "imageMode.colourTable");

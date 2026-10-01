@@ -14,6 +14,7 @@
  */
 import { LayerEffectsTracker } from "./layer-effects-tracker.js";
 import { commitHistoryAndRedo, createHistoryEntry } from "./layer-effects-action-helpers.js";
+import { ColorMode } from "../../document/model/document.js";
 
 const actionHandlers = LayerEffectsTracker.actionHandlers;
 const undoHandlers = LayerEffectsTracker.undoHandlers;
@@ -57,25 +58,35 @@ function restoreLayerBuffers(doc, buffers, bitDepth) {
 
 function handleConvertMode(event, dispatcher, doc) {
   const targetDepth = event.targetDepth;
-  // The rows naming a colour mode carry no depth, and picking the depth the
-  // document is already at is a no-op rather than a conversion.
-  if (targetDepth == null || targetDepth === doc.bitDepth) return;
+  const targetMode = event.targetMode;
+  const changesDepth = targetDepth != null && targetDepth !== doc.bitDepth;
+  // Greyscale is the only conversion with an engine behind it; the menu greys
+  // the rest out, and anything that gets here anyway is ignored rather than
+  // throwing out of a menu click.
+  const changesMode = targetMode === ColorMode.greyscale && targetMode !== doc.colorMode;
+  if (!changesDepth && !changesMode) return;
 
   const historyEntry = createHistoryEntry("dialogs.convertMode", this, {
     actionKind: CONVERT_MODE_ACTION,
     bitDepthBefore: doc.bitDepth,
-    bitDepthAfter: targetDepth,
+    bitDepthAfter: changesDepth ? targetDepth : doc.bitDepth,
+    colorModeBefore: doc.colorMode,
+    colorModeAfter: changesMode ? targetMode : doc.colorMode,
     layerBuffersBefore: captureLayerBuffers(doc),
   });
   commitHistoryAndRedo(this, doc, historyEntry);
 }
 
 function undoConvertMode(historySnapshot, doc) {
+  doc.colorMode = historySnapshot.colorModeBefore;
   restoreLayerBuffers(doc, historySnapshot.layerBuffersBefore, historySnapshot.bitDepthBefore);
 }
 
 function redoConvertMode(historySnapshot, doc) {
   doc.convertBitDepth(historySnapshot.bitDepthAfter);
+  if (historySnapshot.colorModeAfter !== doc.colorMode) {
+    doc.convertColorMode(historySnapshot.colorModeAfter);
+  }
 }
 
 actionHandlers[CONVERT_MODE_ACTION] = handleConvertMode;

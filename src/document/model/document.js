@@ -212,6 +212,29 @@ function computeDuplicateName(originalName, usedNames) {
   return duplicateName;
 }
 
+/**
+ * A copy of `pixelBuffer` with each pixel's colour replaced by its luma.
+ *
+ * Rec.601 weights, matching the luminance the blend modes already use. Alpha is
+ * carried over untouched, and a 32-bit sample above white stays above white.
+ *
+ * A copy rather than an edit in place: history keeps the previous buffers, so
+ * mutating them would make the conversion impossible to undo.
+ */
+function desaturatedCopy(pixelBuffer) {
+  const desaturated = new pixelBuffer.constructor(pixelBuffer.length);
+  const isFloat = pixelBuffer instanceof Float32Array;
+  for (let i = 0; i < pixelBuffer.length; i += 4) {
+    const luma = 0.3 * pixelBuffer[i] + 0.59 * pixelBuffer[i + 1] + 0.11 * pixelBuffer[i + 2];
+    const sample = isFloat ? luma : Math.round(luma);
+    desaturated[i] = sample;
+    desaturated[i + 1] = sample;
+    desaturated[i + 2] = sample;
+    desaturated[i + 3] = pixelBuffer[i + 3];
+  }
+  return desaturated;
+}
+
 export class Document {
   constructor(documentName) {
     this.formatType = "psd";
@@ -829,6 +852,38 @@ export class Document {
     // `composite` reallocates both at the new depth but then returns early
     // unless something is dirty, so without this the freshly allocated target
     // is never rendered into and the view keeps showing the previous frame.
+    this.markDirty();
+    this.needsComposite = true;
+    this.stateChanged = true;
+  }
+
+  /**
+   * Re-hold every layer's pixels in `colorMode`.
+   *
+   * Only greyscale is supported. Pixels stay RGBA with the three colour
+   * channels set to the same luma, so the compositor, the exporters and every
+   * other consumer carry on unchanged; `colorMode` is what says the document is
+   * no longer colour.
+   */
+  convertColorMode(colorMode) {
+    if (colorMode === this.colorMode) return;
+    if (colorMode !== ColorMode.greyscale) {
+      throw new Error("unsupported colour mode conversion: " + colorMode);
+    }
+    for (let layerIdx = 0; layerIdx < this.layers.length; layerIdx++) {
+      const layer = this.layers[layerIdx];
+      if (layer.buffer != null) layer.buffer = desaturatedCopy(layer.buffer);
+      layer.renderCache.dispose();
+      layer.renderCache.needsRebuild = true;
+      layer.renderCache.dirty = true;
+      layer.markDirty();
+    }
+    this.colorMode = colorMode;
+    this.buffer = null;
+    if (this.glTexture) {
+      this.glTexture.delete();
+      this.glTexture = null;
+    }
     this.markDirty();
     this.needsComposite = true;
     this.stateChanged = true;

@@ -61,7 +61,10 @@ function resolveImageModeRowState(row) {
       };
     }
     const isCurrentMode = currentDoc.colorMode === row.targetMode;
-    return { enabled: isCurrentMode === true, checked: isCurrentMode === true };
+    return {
+      enabled: isCurrentMode === true || row.targetMode === ColorMode.greyscale,
+      checked: isCurrentMode === true,
+    };
   };
 }
 
