@@ -100,6 +100,62 @@ describe("document/formats/psd/channel-image-codec.js", () => {
     });
   });
 
+  // Keeping a file's own depth means handing back the samples as they are,
+  // rather than narrowing them to bytes on the way in.
+  describe("decoding at the file's own depth", () => {
+    function rawShortChannelBytes(values) {
+      const bytes = new Uint8Array(values.length * 2);
+      values.forEach((value, i) => {
+        bytes[i * 2] = value >>> 8;
+        bytes[i * 2 + 1] = value & 255;
+      });
+      return bytes;
+    }
+
+    function rawFloatChannelBytes(values) {
+      const bytes = new Uint8Array(values.length * 4);
+      const view = new DataView(bytes.buffer);
+      values.forEach((value, i) => view.setFloat32(i * 4, value, false));
+      return bytes;
+    }
+
+    it("returns 16-bit samples as shorts when asked to keep the depth", () => {
+      const samples = [0, 12345, 65535, 511];
+      const decoded = ChannelImageCodec.decompressChannel(
+        false, 16, rawShortChannelBytes(samples), samples.length, 1, 0, 0, samples.length * 2, 16,
+      );
+      assert.ok(decoded instanceof Uint16Array, `got a ${decoded.constructor.name}`);
+      assert.deepEqual([...decoded.subarray(0, samples.length)], samples);
+    });
+
+    it("returns 32-bit samples as floats, including above white", () => {
+      const samples = [0, 0.5, 1, 4.25];
+      const decoded = ChannelImageCodec.decompressChannel(
+        false, 32, rawFloatChannelBytes(samples), samples.length, 1, 0, 0, samples.length * 4, 32,
+      );
+      assert.ok(decoded instanceof Float32Array, `got a ${decoded.constructor.name}`);
+      assert.equal(decoded[3], 4.25, "the range above white survives import");
+    });
+
+    it("still narrows to bytes when the document cannot hold the depth", () => {
+      const samples = [0, 0.5, 1, 4.25];
+      const decoded = ChannelImageCodec.decompressChannel(
+        false, 32, rawFloatChannelBytes(samples), samples.length, 1, 0, 0, samples.length * 4, 8,
+      );
+      assert.ok(decoded instanceof Uint8Array);
+      assert.equal(decoded[3], 255, "and clips there, as before");
+    });
+
+    it("narrows by default, so callers that pass no depth are unaffected", () => {
+      const samples = [0, 32768, 65535, 511];
+      const decoded = ChannelImageCodec.decompressChannel(
+        false, 16, rawShortChannelBytes(samples), samples.length, 1, 0, 0, samples.length * 2,
+      );
+      assert.ok(decoded instanceof Uint8Array);
+      assert.deepEqual([...decoded.subarray(0, 4)], [0, 128, 255, 2]);
+    });
+  });
+
   // 16-bit samples span the full 0..65535 range, confirmed against a real
   // 16-bit PSD. Keeping the high byte divides by 256 and truncates, which sits
   // a level dark through the midtones; the exact scale is 65535 / 255 = 257.

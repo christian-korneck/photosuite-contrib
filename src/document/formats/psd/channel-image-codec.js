@@ -6,6 +6,7 @@
 import { BinaryUtils } from "../../../core/binary/binary-utils.js";
 import { PlanarRgbaBuffer, allocBuffer, interleavedToPlanar, planarToInterleaved } from "../../../engine/compositing/buffer-utils.js";
 import { linearToSrgb } from "../../../engine/compositing/color-math.js";
+import { allocPixelBuffer, interleavePlanarChannels } from "../../../engine/compositing/pixel-depth.js";
 
 /** PSD channel-compression scheme codes. */
 const COMPRESS_RAW = 0;
@@ -24,7 +25,7 @@ const CHANNEL_USER_MASK = -2;
 const CHANNEL_VECTOR_MASK = -3;
 
 function parse(layer, doc, data, pos) {
-  return readLayerChannels(doc.isPSB, doc.bitDepth, doc.colorMode, layer, data, pos);
+  return readLayerChannels(doc.isPSB, doc.bitDepth, doc.colorMode, layer, data, pos, doc.targetBitDepth);
 }
 
 function serialize(isPSB, layer, buf, pos, channelDataOffset, options) {
@@ -32,7 +33,8 @@ function serialize(isPSB, layer, buf, pos, channelDataOffset, options) {
 }
 
 /** Read every channel plane of a layer and assemble the interleaved buffer. */
-function readLayerChannels(isPSB, bitDepth, colorMode, layer, data, pos) {
+function readLayerChannels(isPSB, bitDepth, colorMode, layer, data, pos, targetBitDepth) {
+  if (targetBitDepth == null) targetBitDepth = 8;
   var channelInfo = layer.channelInfo;
   var channels = {};
   for (var i = 0; i < channelInfo.length; i++) {
@@ -43,7 +45,9 @@ function readLayerChannels(isPSB, bitDepth, colorMode, layer, data, pos) {
     if (chId == CHANNEL_VECTOR_MASK) chRect = layer.warpData.rect;
     else if (chId == CHANNEL_USER_MASK) chRect = layer.d.rect;
     else chRect = layer.rect;
-    var chBuffer = readChannelBuffer(isPSB, bitDepth, data, chRect.width, chRect.height, pos, chLength);
+    // Masks stay 8-bit whatever the document depth.
+    var channelTargetDepth = chId == CHANNEL_VECTOR_MASK || chId == CHANNEL_USER_MASK ? 8 : targetBitDepth;
+    var chBuffer = readChannelBuffer(isPSB, bitDepth, data, chRect.width, chRect.height, pos, chLength, channelTargetDepth);
     pos += chLength;
     if (chId == CHANNEL_VECTOR_MASK) layer.warpData.channel = chBuffer;
     else if (chId == CHANNEL_USER_MASK) layer.d.channel = chBuffer;
@@ -70,16 +74,36 @@ function readLayerChannels(isPSB, bitDepth, colorMode, layer, data, pos) {
     planarBuf.w = channels["c-1"];
     console.log("converting from CMYK to RGB");
   }
-  if (planarBuf.h == null) planarBuf.h = allocBuffer(0);
+  if (planarBuf.h == null) planarBuf.h = allocPixelChannel(0, targetBitDepth);
   if (planarBuf.w == null && planarBuf.h != null) {
     planarBuf.w = planarBuf.h.slice(0);
-    planarBuf.w.fill(255);
+    planarBuf.w.fill(opaqueAlphaSample(targetBitDepth));
   }
   if (planarBuf.l == null) planarBuf.l = planarBuf.h.slice(0);
   if (planarBuf.O == null) planarBuf.O = planarBuf.h.slice(0);
-  layer.buffer = allocBuffer(Math.max(0, layer.rect.area() * 4));
-  planarToInterleaved(planarBuf, layer.buffer);
+  var pixelCount = Math.max(0, layer.rect.area());
+  if (targetBitDepth === 8) {
+    layer.buffer = allocBuffer(pixelCount * 4);
+    planarToInterleaved(planarBuf, layer.buffer);
+  } else {
+    layer.buffer = allocPixelBuffer(pixelCount, targetBitDepth);
+    interleavePlanarChannels(planarBuf.h, planarBuf.l, planarBuf.O, planarBuf.w, layer.buffer);
+  }
   return pos;
+}
+
+/** A single-sample-per-pixel plane at `bitDepth`. */
+function allocPixelChannel(sampleCount, bitDepth) {
+  if (bitDepth === 16) return new Uint16Array(sampleCount);
+  if (bitDepth === 32) return new Float32Array(sampleCount);
+  return allocBuffer(sampleCount);
+}
+
+/** Fully opaque alpha at `bitDepth`: 1.0 for float, the ceiling otherwise. */
+function opaqueAlphaSample(bitDepth) {
+  if (bitDepth === 16) return 65535;
+  if (bitDepth === 32) return 1;
+  return 255;
 }
 
 /** Convert CMYK channel planes to RGB in place (c/m/y hold the result). */
@@ -125,10 +149,10 @@ function writeLayerChannels(isPSB, layer, buf, pos, channelDataOffset, options) 
 }
 
 /** Read one channel's [compression tag][data] block. */
-function readChannelBuffer(isPSB, bitDepth, data, width, height, pos, byteLength) {
+function readChannelBuffer(isPSB, bitDepth, data, width, height, pos, byteLength, targetBitDepth) {
   var compression = BinaryUtils.readUint16(data, pos);
   pos += 2;
-  return decompressChannel(isPSB, bitDepth, data, width, height, pos, compression, byteLength - 2);
+  return decompressChannel(isPSB, bitDepth, data, width, height, pos, compression, byteLength - 2, targetBitDepth);
 }
 
 /** Write one channel's [compression tag][data] block. */
@@ -139,7 +163,7 @@ function writeChannelBuffer(isPSB, channelData, data, width, height, pos, compre
 }
 
 /** Decode a channel's compressed bytes into a raw sample buffer. */
-function decompressChannel(isPSB, bitDepth, data, width, height, pos, compression, byteLength) {
+function decompressChannel(isPSB, bitDepth, data, width, height, pos, compression, byteLength, targetBitDepth) {
   var output;
   var rawByteCount = width * height * (bitDepth >>> 3);
   var padding = rawByteCount & 3;
@@ -179,9 +203,45 @@ function decompressChannel(isPSB, bitDepth, data, width, height, pos, compressio
     }
   }
 
-  if (bitDepth == 16) output = shortChannelToBytes(output, width * height);
-  if (bitDepth == 32) output = floatChannelToBytes(output, width * height);
+  var sampleCount = width * height;
+  var keepsSourceDepth = targetBitDepth === bitDepth;
+  if (bitDepth == 16) {
+    output = keepsSourceDepth ? shortChannelToShorts(output, sampleCount) : shortChannelToBytes(output, sampleCount);
+  }
+  if (bitDepth == 32) {
+    output = keepsSourceDepth ? floatChannelToFloats(output, sampleCount) : floatChannelToBytes(output, sampleCount);
+  }
   return output;
+}
+
+/**
+ * A 16-bit channel as big-endian shorts.
+ *
+ * @param {Uint8Array} channelBytes Raw sample bytes.
+ * @param {number} sampleCount Samples to read.
+ * @returns {Uint16Array} One short per sample.
+ */
+function shortChannelToShorts(channelBytes, sampleCount) {
+  var shorts = new Uint16Array(sampleCount);
+  for (var i = 0; i < sampleCount; i++) {
+    shorts[i] = (channelBytes[i * 2] << 8) | channelBytes[i * 2 + 1];
+  }
+  return shorts;
+}
+
+/**
+ * A 32-bit channel as floats, keeping the linear values the file stores —
+ * including those above 1, which are the point of a 32-bit document.
+ *
+ * @param {Uint8Array} channelBytes Raw sample bytes.
+ * @param {number} sampleCount Samples to read.
+ * @returns {Float32Array} One float per sample.
+ */
+function floatChannelToFloats(channelBytes, sampleCount) {
+  var samples = new DataView(channelBytes.buffer, channelBytes.byteOffset, sampleCount * 4);
+  var floats = new Float32Array(sampleCount);
+  for (var i = 0; i < sampleCount; i++) floats[i] = samples.getFloat32(i * 4, false);
+  return floats;
 }
 
 /**

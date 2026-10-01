@@ -15,6 +15,8 @@ import {
 } from "./slice-descriptor.js";
 import { TrackerRegistry } from "../../../features/trackers/tracker-registry.js";
 import { ColorMode, Document } from "../../model/document.js";
+import { convertPixelBuffer } from "../../../engine/compositing/pixel-depth.js";
+import { LayerSystem } from "../../../engine/layer-system.js";
 import { Layer, LayerSectionType } from "../../model/layer.js";
 import { XMPData } from "../metadata/xmp-metadata.js";
 import { LayerEffectDefs } from "./effect-defs.js";
@@ -473,7 +475,10 @@ function ensureBackgroundLayer(doc) {
     const backgroundLayer = doc.newLayer();
     backgroundLayer.setName("Background");
     doc.layers.push(backgroundLayer);
-    backgroundLayer.buffer = doc.buffer.slice(0);
+    // The composite is decoded as bytes, so a flattened wider file lands here
+    // narrowed; widening keeps every layer in the document at one depth.
+    const targetBitDepth = doc.targetBitDepth == null ? 8 : doc.targetBitDepth;
+    backgroundLayer.buffer = convertPixelBuffer(doc.buffer.slice(0), targetBitDepth);
     backgroundLayer.rect = new Rect(0, 0, doc.width, doc.height);
   }
 }
@@ -941,14 +946,24 @@ function finalizeLayersAfterPsdRead(doc, textDocModel) {
 }
 
 /** Hydrates document state after all PSD binary sections are read. */
+/**
+ * The depth a file's pixels will be held at: its own where the GPU can
+ * composite that, 8-bit otherwise.
+ */
+function resolveImportBitDepth(fileBitDepth) {
+  if (fileBitDepth !== 16 && fileBitDepth !== 32) return 8;
+  return LayerSystem.supportsBitDepth(fileBitDepth) ? fileBitDepth : 8;
+}
+
 function hydrateDocumentAfterPsdRead(doc) {
   ensureBackgroundLayer(doc);
   applyImageResourcesToDocument(doc);
   delete doc.isPSB;
-  // Reading the file needs the header's own mode and depth, but everything it
-  // produced is 8-bit RGBA, so the document reports what it actually holds.
+  // The header's own mode and depth drove the read; from here the document
+  // reports what it actually holds.
   doc.colorMode = ColorMode.rgb;
-  doc.bitDepth = 8;
+  doc.bitDepth = doc.targetBitDepth == null ? 8 : doc.targetBitDepth;
+  delete doc.targetBitDepth;
   const textDocModel = resolveTextDocumentModel(doc);
   finalizeLayersAfterPsdRead(doc, textDocModel);
   TrackerRegistry.LayerCompTracker.offsetAllCompOrigins(doc, true);
@@ -1293,6 +1308,7 @@ PSDParser.parse = function (rawBuffer, doc) {
 
   sectionEnd = PSDParser.readHeader(doc, data, sectionStart);
   sectionStart = sectionEnd;
+  doc.targetBitDepth = resolveImportBitDepth(doc.bitDepth);
 
   sectionEnd = PSDParser.readColorModeData(doc, data, sectionStart);
   sectionStart = sectionEnd;

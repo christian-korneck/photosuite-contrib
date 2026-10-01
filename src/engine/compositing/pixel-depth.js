@@ -161,6 +161,23 @@ export function fillPixelBuffer(pixelBuffer, packedRgba) {
   }
 }
 
+/**
+ * Interleave four channel planes into one packed RGBA buffer.
+ *
+ * `planarToInterleaved` in `buffer-utils.js` packs four pixels at a time
+ * through `Uint32Array` views, which only works a byte per sample.
+ */
+export function interleavePlanarChannels(channel0, channel1, channel2, alpha, outBuffer) {
+  const pixelCount = Math.min(channel0.length, outBuffer.length / SAMPLES_PER_PIXEL);
+  for (let pixel = 0; pixel < pixelCount; pixel++) {
+    const out = pixel * SAMPLES_PER_PIXEL;
+    outBuffer[out] = channel0[pixel];
+    outBuffer[out + 1] = channel1[pixel];
+    outBuffer[out + 2] = channel2[pixel];
+    outBuffer[out + 3] = alpha[pixel];
+  }
+}
+
 /** Alpha is linear coverage at every depth, so it only ever changes scale. */
 export function rescaleAlpha(sample, fromDepth, toDepth) {
   if (fromDepth === toDepth) return sample;
