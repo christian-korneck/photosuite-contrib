@@ -820,18 +820,29 @@ function bootstrapSavedResources(controller) {
   });
 }
 
+/**
+ * Whether `bytes` is a document rather than a preset, font or script.
+ *
+ * The startup store holds resources to load on launch. Anything the format
+ * registry recognises would be *opened as a document* instead, so a stored
+ * image would reappear as a tab on every launch.
+ */
+function isDocumentResource(bytes) {
+  if (bytes == null || !(bytes instanceof ArrayBuffer)) return false;
+  return FileFormatRegistry.detectFormat(bytes) != null;
+}
+
 function restoreStartupResources(controller, storedFiles) {
   for (const resourceKey in storedFiles) {
     if (resourceKey === "_all_.aco") {
       restorePersistedSwatchBlob(controller, resourceKey, storedFiles[resourceKey]);
       continue;
     }
-    if (!resourceKey.endsWith(".jsx")) {
-      FileLoader.processLoadedBytes({
-        url: resourceKey,
-        suppressPresetAddedAlert: true
-      }, storedFiles[resourceKey], controller);
-    }
+    if (resourceKey.endsWith(".jsx") || isDocumentResource(storedFiles[resourceKey])) continue;
+    FileLoader.processLoadedBytes({
+      url: resourceKey,
+      suppressPresetAddedAlert: true
+    }, storedFiles[resourceKey], controller);
   }
 }
 

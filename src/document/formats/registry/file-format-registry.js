@@ -23,7 +23,7 @@ import { heicCodec } from "../codecs/heic.js";
 import { pngCodec, gifCodec, icoCodec, tiffCodec } from "../codecs/raster-common.js";
 import { bmpCodec, tgaCodec, ppmCodec, ilbmCodec } from "../codecs/raster-bitmap.js";
 import { ddsCodec, vtfCodec } from "../codecs/raster-texture.js";
-import { exrCodec, fitsCodec } from "../codecs/raster-hdr.js";
+import { exrCodec, fitsCodec, radianceCodec } from "../codecs/raster-hdr.js";
 import { lifCodec, exeCodec } from "../codecs/raster-extra.js";
 import { rafCodec, rawCodec } from "../codecs/camera-raw.js";
 import {
@@ -65,6 +65,7 @@ const formatCodecEntries = [
   ["ILBM", ilbmCodec],
   ["FITS", fitsCodec],
   ["EXR", exrCodec],
+  ["HDR", radianceCodec],
   ["JPG", jpegCodec],
   ["LIF", lifCodec],
   ["PDF", pdfCodec],

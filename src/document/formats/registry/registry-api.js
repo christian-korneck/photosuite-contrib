@@ -276,8 +276,18 @@ export function openFiles(documentName, frames) {
     if (frame.layerName) layer.setName(frame.layerName);
     if (frame.pathResources) importPathResources(document, frame.pathResources, documentBounds);
     layer.rect = frame.rect.clone();
-    layer.buffer = new Uint8Array(frame.data);
-    trimRgbaToContent(layer);
+    // A frame may carry wider samples than bytes. `new Uint8Array(floats)`
+    // converts element-wise rather than reinterpreting, so a float frame would
+    // truncate to 0 or 1 and import as black.
+    const isWideFrame = frame.bitDepth != null && frame.bitDepth !== 8;
+    layer.buffer = isWideFrame ? frame.data : new Uint8Array(frame.data);
+    if (isWideFrame) {
+      document.bitDepth = frame.bitDepth;
+    } else {
+      // Trimming reads alpha as a byte and copies pixels a word at a time, so
+      // it only applies to byte frames. It is an optimisation, not a necessity.
+      trimRgbaToContent(layer);
+    }
     document.layers.push(layer);
   }
 

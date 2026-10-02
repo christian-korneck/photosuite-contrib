@@ -207,6 +207,9 @@ export function detectFormat(buffer) {
   if (matchAt(bytes, [215, 205, 198, 154])) formatId = "wmf";
   if (matchAt(bytes, [1, 0, 0, 0])) formatId = "emf";
   if (matchAt(bytes, [118, 47, 49, 1])) formatId = "exr";
+  // Radiance opens "#?RADIANCE" or, from older writers, "#?RGBE".
+  if (matchAt(bytes, [35, 63, 82, 65, 68, 73, 65, 78, 67, 69])
+    || matchAt(bytes, [35, 63, 82, 71, 66, 69])) formatId = "hdr";
   if (matchAt(bytes, [10, 10, 10, 10])) formatId = "jsx";
   if (matchAt(bytes, [77, 90])) formatId = "exe";
   if (formatId == null && lookupCameraBySize(bytes.length) != null) return "tiff";
